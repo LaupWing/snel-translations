@@ -15,6 +15,7 @@ use Snel\Translations\Core\TranslationGroup;
 use Snel\Translations\Core\TermTranslation;
 use Snel\Translations\Core\Translator;
 use Snel\Translations\Core\UrlGenerator;
+use Snel\Translations\Nav;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -136,5 +137,13 @@ if ( ! function_exists( 'snel_term_name' ) ) {
 if ( ! function_exists( 'snel_term_description' ) ) {
 	function snel_term_description( $term, $lang = null ) {
 		return TermTranslation::description( $term, $lang );
+	}
+}
+
+// ─── Menu ────────────────────────────────────────────────────────────────────
+
+if ( ! function_exists( 'snel_nav_item' ) ) {
+	function snel_nav_item( $item ) {
+		return Nav::item( $item );
 	}
 }
