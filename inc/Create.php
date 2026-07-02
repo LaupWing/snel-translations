@@ -396,6 +396,17 @@ class Create {
 		return $map[ $name ] ?? [];
 	}
 
+	/**
+	 * Repeater attributes per block: an array attribute whose items each hold
+	 * text sub-fields. Filterable, e.g.
+	 *   ['snel/process' => ['steps' => ['title', 'heading', 'body']]]
+	 * @return array<string,array<string>>  attr => [text sub-keys]
+	 */
+	public static function block_repeater_attrs( string $name ): array {
+		$map = apply_filters( 'snel_block_repeater_attrs', [], $name );
+		return $map[ $name ] ?? [];
+	}
+
 	/** Pass 1 — collect translatable strings in deterministic order. */
 	public static function collect_strings( array $blocks, array &$out ): void {
 		foreach ( $blocks as $block ) {
@@ -405,6 +416,22 @@ class Create {
 				$val = $block['attrs'][ $key ] ?? '';
 				if ( is_string( $val ) && trim( $val ) !== '' ) {
 					$out[] = $val;
+				}
+			}
+
+			// Repeater attributes: each array item's declared text sub-fields.
+			foreach ( self::block_repeater_attrs( $name ) as $attr => $subkeys ) {
+				$items = $block['attrs'][ $attr ] ?? [];
+				if ( ! is_array( $items ) ) {
+					continue;
+				}
+				foreach ( $items as $item ) {
+					foreach ( $subkeys as $sk ) {
+						$val = is_array( $item ) ? ( $item[ $sk ] ?? '' ) : '';
+						if ( is_string( $val ) && trim( $val ) !== '' ) {
+							$out[] = $val;
+						}
+					}
 				}
 			}
 
@@ -430,6 +457,25 @@ class Create {
 				if ( is_string( $val ) && trim( $val ) !== '' ) {
 					$block['attrs'][ $key ] = $translations[ $idx ] ?? $val;
 					$idx++;
+				}
+			}
+
+			// Repeater attributes — same order as collect_strings.
+			foreach ( self::block_repeater_attrs( $name ) as $attr => $subkeys ) {
+				if ( empty( $block['attrs'][ $attr ] ) || ! is_array( $block['attrs'][ $attr ] ) ) {
+					continue;
+				}
+				foreach ( $block['attrs'][ $attr ] as $ii => $item ) {
+					if ( ! is_array( $item ) ) {
+						continue;
+					}
+					foreach ( $subkeys as $sk ) {
+						$val = $item[ $sk ] ?? '';
+						if ( is_string( $val ) && trim( $val ) !== '' ) {
+							$block['attrs'][ $attr ][ $ii ][ $sk ] = $translations[ $idx ] ?? $val;
+							$idx++;
+						}
+					}
 				}
 			}
 
