@@ -31,7 +31,15 @@ class Boot {
 	 *       new Admin();                  admin menu page + asset enqueue
 	 */
 	public static function init(): void {
-		// TODO: require + register layers here (skeleton for now).
+		// ── Core engine ──────────────────────────────────────────────────────
+		require_once SNEL_TR_DIR . 'inc/core/LocaleManager.php';
+		// (Router, TranslationGroup, TermTranslation, Translator — added next.)
+
+		// ── Request layers (Model, Controller, Rest, Admin) — added later. ────
+
+		// ── Register the runtime ─────────────────────────────────────────────
+		// LocaleManager is a static utility — nothing to instantiate/register.
+		// Router::register() etc. will be called here once ported.
 	}
 
 	/**
