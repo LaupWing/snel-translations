@@ -48,6 +48,7 @@ class Boot {
 		require_once SNEL_TR_DIR . 'inc/Create.php';
 		require_once SNEL_TR_DIR . 'inc/Nav.php';
 		require_once SNEL_TR_DIR . 'inc/Admin.php';
+		require_once SNEL_TR_DIR . 'inc/AdminColumns.php';
 
 		// ── Register the runtime ─────────────────────────────────────────────
 		Core\Router::register();            // rewrite rules + resolve request → sibling
@@ -56,6 +57,7 @@ class Boot {
 		Nav::register();                    // nav menu item resolution
 		Ai::register();                     // snel_translate AJAX
 		Create::register();                 // create/sync/state AJAX + editor data
+		AdminColumns::register();           // list-table language columns + filter
 
 		new Rest();                         // REST endpoints (snel-translations/v1)
 		( new Admin() )->register();        // admin menu page + asset enqueue
