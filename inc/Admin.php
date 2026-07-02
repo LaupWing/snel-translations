@@ -26,13 +26,32 @@ class Admin {
 
 	/** Register admin hooks. Called from Boot when live. */
 	public function register(): void {
-		add_action( 'admin_menu', [ $this, 'menu' ] );
+		// Priority 99 so a parent menu (e.g. the theme's "Snel Stack") exists first.
+		add_action( 'admin_menu', [ $this, 'menu' ], 99 );
 		add_action( 'admin_enqueue_scripts', [ $this, 'assets' ] );
 		add_action( 'enqueue_block_editor_assets', [ $this, 'editor_assets' ] );
 	}
 
-	/** Top-level admin menu page. */
+	/**
+	 * Register the admin page. Sits under the "Snel Stack" menu when it exists;
+	 * falls back to a top-level page otherwise (so it's never orphaned). The
+	 * parent slug is filterable via `snel_translations_parent_menu`.
+	 */
 	public function menu(): void {
+		$parent = apply_filters( 'snel_translations_parent_menu', 'snelstack' );
+
+		if ( $parent && isset( $GLOBALS['admin_page_hooks'][ $parent ] ) ) {
+			add_submenu_page(
+				$parent,
+				__( 'Snel Translations', 'snel' ),
+				__( 'Translations', 'snel' ),
+				'manage_options',
+				self::PAGE,
+				[ $this, 'render' ]
+			);
+			return;
+		}
+
 		add_menu_page(
 			__( 'Snel Translations', 'snel' ),
 			__( 'Translations', 'snel' ),
