@@ -33,7 +33,8 @@ class Boot {
 	public static function init(): void {
 		// ── Core engine ──────────────────────────────────────────────────────
 		require_once SNEL_TR_DIR . 'inc/core/LocaleManager.php';
-		// (Router, TranslationGroup, TermTranslation, Translator — added next.)
+		require_once SNEL_TR_DIR . 'inc/core/TranslationGroup.php';
+		// (Router, TermTranslation, Translator — added next.)
 
 		// ── Request layers (Model, Controller, Rest, Admin) — added later. ────
 
