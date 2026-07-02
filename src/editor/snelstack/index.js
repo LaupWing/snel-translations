@@ -187,7 +187,7 @@ function TranslationsPanel() {
 		if (!missing.length) return;
 		setBusy(true);
 		setResult(null);
-		setBatch(missing.map((l) => ({ code: l.code, label: l.label, state: 'pending' })));
+		setBatch(missing.map((l) => ({ code: l.code, label: l.label, state: 'pending', action: 'snel_create_translation' })));
 		setStatus(__('Saving page…', 'snel'));
 
 		const postId = currentPostId();
@@ -229,7 +229,7 @@ function TranslationsPanel() {
 		if (!outdated.length) return;
 		setBusy(true);
 		setResult(null);
-		setBatch(outdated.map((l) => ({ code: l.code, label: l.label, state: 'pending' })));
+		setBatch(outdated.map((l) => ({ code: l.code, label: l.label, state: 'pending', action: 'snel_sync_translation' })));
 		setStatus(__('Syncing outdated translations…', 'snel'));
 
 		const postId = currentPostId();
@@ -244,6 +244,19 @@ function TranslationsPanel() {
 		}
 		await refreshState();
 		setStatus(__('Done.', 'snel'));
+		setBusy(false);
+	};
+
+	// Retry a single failed item (re-runs its original create/sync action).
+	const retryItem = async (item) => {
+		if (busy) return;
+		setBusy(true);
+		setBatch((prev) => prev.map((it) => (it.code === item.code ? { ...it, state: 'working', msg: undefined } : it)));
+		const r = await callAction(item.action || 'snel_create_translation', currentPostId(), item.code);
+		setBatch((prev) => prev.map((it) => (
+			it.code === item.code ? { ...it, state: r.ok ? 'done' : 'error', editUrl: r.editUrl, msg: r.msg } : it
+		)));
+		await refreshState();
 		setBusy(false);
 	};
 
@@ -382,7 +395,19 @@ function TranslationsPanel() {
 								{it.state === 'done' && (it.editUrl
 									? <a href={it.editUrl}>{__('open →', 'snel')}</a>
 									: <span style={{ color: '#16a34a' }}>✓</span>)}
-								{it.state === 'error' && <span style={{ color: '#d63638' }}>{__('failed', 'snel')}{it.msg ? ': ' + it.msg : ''}</span>}
+								{it.state === 'error' && (
+								<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+									<span
+										title={it.msg || __('Failed', 'snel')}
+										style={{ color: '#d63638', cursor: 'help', fontWeight: 700, fontSize: 13 }}
+									>⚠</span>
+									<a
+										href="#"
+										onClick={(e) => { e.preventDefault(); retryItem(it); }}
+										style={{ fontSize: 12 }}
+									>{__('Retry', 'snel')}</a>
+								</span>
+							)}
 							</span>
 						</div>
 					))}
