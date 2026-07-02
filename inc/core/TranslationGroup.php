@@ -184,6 +184,13 @@ class TranslationGroup {
 			return $url;
 		}
 
+		// The static front page lives at the site root. Its translation should
+		// live at the language root (/en/), not /en/{slug}/.
+		$front_id = (int) get_option( 'page_on_front' );
+		if ( $front_id && self::groupOf( $post->ID ) === self::groupOf( $front_id ) ) {
+			return home_url( '/' . $lang . '/' );
+		}
+
 		$parts = wp_parse_url( $url );
 		if ( empty( $parts['path'] ) ) {
 			return $url;
