@@ -21,7 +21,7 @@ class Router {
 	/** Register all routing hooks. Called from Boot once, when live. */
 	public static function register(): void {
 		add_filter( 'query_vars', [ self::class, 'registerQueryVars' ] );
-		add_action( 'init', [ self::class, 'registerRewriteRules' ] );
+		add_action( 'init', [ self::class, 'registerRewriteRules' ], 20 ); // after CPTs/taxes register
 		add_action( 'after_switch_theme', 'flush_rewrite_rules' );
 		add_filter( 'request', [ self::class, 'interceptLanguageUrl' ], 1 );
 		add_filter( 'request', [ self::class, 'fixFrontPage' ] );
@@ -29,7 +29,7 @@ class Router {
 		add_filter( 'redirect_canonical', [ self::class, 'preventCanonicalRedirect' ], 10, 2 );
 
 		// Force one flush after deploy if the rules are stale.
-		$rules_version = 'snel_rewrite_v6';
+		$rules_version = 'snel_rewrite_v7';
 		if ( get_option( $rules_version ) !== '1' ) {
 			add_action( 'init', function () use ( $rules_version ) {
 				flush_rewrite_rules();
@@ -53,51 +53,53 @@ class Router {
 	 *   /en/any-slug/           → page/post
 	 */
 	public static function registerRewriteRules(): void {
-		$default   = LocaleManager::default();
-		$langs     = LocaleManager::supported();
-		$cpt_slugs = UrlGenerator::cptSlugsConfig();
+		$default = LocaleManager::default();
+		$langs   = LocaleManager::supported();
+
+		// Every public custom post type + taxonomy, routed under each language
+		// using its own rewrite slug (same slug across languages). Generic — no
+		// per-project config, no per-link work.
+		$cpts  = get_post_types( [ 'public' => true, '_builtin' => false ], 'objects' );
+		$taxes = get_taxonomies( [ 'public' => true ], 'objects' );
+
+		$slug_of = function ( $obj ) {
+			return ( is_array( $obj->rewrite ) && ! empty( $obj->rewrite['slug'] ) ) ? $obj->rewrite['slug'] : $obj->name;
+		};
 
 		foreach ( $langs as $lang ) {
 			if ( $lang === $default ) {
 				continue;
 			}
 
-			add_rewrite_rule( "^{$lang}/?$", 'index.php?lang=' . $lang, 'top' );
+			// With 'top', the FIRST call is highest priority — so add the most
+			// specific rules first and the catch-all last.
 
-			add_rewrite_rule(
-				"^{$lang}/page/([0-9]+)/?$",
-				'index.php?lang=' . $lang . '&paged=$matches[1]',
-				'top'
-			);
+			// Language home + blog pagination.
+			add_rewrite_rule( "^{$lang}/?$", "index.php?lang={$lang}", 'top' );
+			add_rewrite_rule( "^{$lang}/page/([0-9]+)/?$", "index.php?lang={$lang}&paged=\$matches[1]", 'top' );
 
-			foreach ( $cpt_slugs as $dutch_slug => $translations ) {
-				if ( ! empty( $translations[ $lang ] ) ) {
-					$translated_slug = $translations[ $lang ];
-
-					add_rewrite_rule(
-						"^{$lang}/{$translated_slug}/?$",
-						'index.php?lang=' . $lang . '&post_type=' . $dutch_slug,
-						'top'
-					);
-					add_rewrite_rule(
-						"^{$lang}/{$translated_slug}/([^/]+)/?$",
-						'index.php?lang=' . $lang . '&post_type=' . $dutch_slug . '&name=$matches[1]',
-						'top'
-					);
-					add_rewrite_rule(
-						"^{$lang}/{$translated_slug}/page/([0-9]+)/?$",
-						'index.php?lang=' . $lang . '&post_type=' . $dutch_slug . '&paged=$matches[1]',
-						'top'
-					);
+			// CPT archives + singles.
+			foreach ( $cpts as $cpt ) {
+				$slug = $slug_of( $cpt );
+				if ( $cpt->has_archive ) {
+					add_rewrite_rule( "^{$lang}/{$slug}/?$", "index.php?lang={$lang}&post_type={$cpt->name}", 'top' );
 				}
+				add_rewrite_rule( "^{$lang}/{$slug}/page/([0-9]+)/?$", "index.php?lang={$lang}&post_type={$cpt->name}&paged=\$matches[1]", 'top' );
+				add_rewrite_rule( "^{$lang}/{$slug}/([^/]+)/?$", "index.php?lang={$lang}&post_type={$cpt->name}&name=\$matches[1]", 'top' );
 			}
 
-			// Catch-all for pages and posts.
-			add_rewrite_rule(
-				"^{$lang}/(.+?)/?$",
-				'index.php?lang=' . $lang . '&pagename=$matches[1]',
-				'top'
-			);
+			// Taxonomy term archives (categories, tags, custom public taxonomies).
+			foreach ( $taxes as $tax ) {
+				if ( $tax->name === 'post_format' ) {
+					continue;
+				}
+				$base = $slug_of( $tax );
+				$qv   = $tax->name === 'category' ? 'category_name' : ( $tax->name === 'post_tag' ? 'tag' : $tax->name );
+				add_rewrite_rule( "^{$lang}/{$base}/([^/]+)/?$", "index.php?lang={$lang}&{$qv}=\$matches[1]", 'top' );
+			}
+
+			// Catch-all for pages/posts (lowest priority — added last).
+			add_rewrite_rule( "^{$lang}/(.+?)/?$", "index.php?lang={$lang}&pagename=\$matches[1]", 'top' );
 		}
 	}
 
@@ -163,8 +165,11 @@ class Router {
 		) {
 			$front_page_id = (int) get_option( 'page_on_front' );
 			if ( $front_page_id ) {
-				$sibling               = TranslationGroup::translation( $front_page_id, $lang );
-				$query_vars['page_id'] = $sibling ?: $front_page_id;
+				$sibling = TranslationGroup::translation( $front_page_id, $lang );
+				// Only use the sibling if it's actually published — otherwise a
+				// draft/trashed translation would 404 the language home.
+				$use_sibling           = $sibling && get_post_status( $sibling ) === 'publish';
+				$query_vars['page_id'] = $use_sibling ? $sibling : $front_page_id;
 			}
 		}
 
@@ -210,7 +215,9 @@ class Router {
 				return $query_vars; // no translation — let WP render what it found
 			}
 			$target = get_post( $sibling_id );
-			if ( ! $target instanceof \WP_Post ) {
+			// Ignore unpublished translations — fall back to the found post so the
+			// URL still resolves instead of 404ing on a draft.
+			if ( ! $target instanceof \WP_Post || $target->post_status !== 'publish' ) {
 				return $query_vars;
 			}
 		}
