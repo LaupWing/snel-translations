@@ -36,7 +36,8 @@ class Boot {
 		require_once SNEL_TR_DIR . 'inc/core/TranslationGroup.php';
 		require_once SNEL_TR_DIR . 'inc/core/UrlGenerator.php';
 		require_once SNEL_TR_DIR . 'inc/core/Router.php';
-		// (TermTranslation, Translator — added next.)
+		require_once SNEL_TR_DIR . 'inc/core/Translator.php';
+		// (TermTranslation — added next.)
 
 		// ── Request layers (Model, Controller, Rest, Admin) — added later. ────
 
