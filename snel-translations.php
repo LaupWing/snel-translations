@@ -20,6 +20,21 @@ define( 'SNEL_TR_FILE', __FILE__ );
 define( 'SNEL_TR_DIR', plugin_dir_path( __FILE__ ) );  // .../plugins/snel-translations/
 define( 'SNEL_TR_URL', plugin_dir_url( __FILE__ ) );   // https://site/.../snel-translations/
 
+// ─── Auto-update (GitHub releases) ───────────────────────────────────────────
+// Checks the GitHub repo for new releases; client sites get the update in
+// wp-admin. Guarded so a missing vendor/ (e.g. a dev checkout) never fatals.
+if ( file_exists( SNEL_TR_DIR . 'vendor/autoload.php' ) ) {
+	require_once SNEL_TR_DIR . 'vendor/autoload.php';
+
+	$snel_tr_updater = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+		'https://github.com/LaupWing/snel-translations/',
+		__FILE__,
+		'snel-translations'
+	);
+	$snel_tr_updater->setAuthentication( defined( 'SNEL_TR_GITHUB_TOKEN' ) ? constant( 'SNEL_TR_GITHUB_TOKEN' ) : '' );
+	$snel_tr_updater->getVcsApi()->enableReleaseAssets();
+}
+
 // ─── Boot ────────────────────────────────────────────────────────────────────
 // The main file does almost nothing itself: it hands off to Boot, which is the
 // single place that loads files and wires the layers together.
