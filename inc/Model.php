@@ -151,4 +151,46 @@ class Model {
 	public static function deletePost( int $post_id ): void {
 		wp_delete_post( $post_id, true );
 	}
+
+	// ─── Custom fields (translatable meta) ───────────────────────────────────
+
+	/**
+	 * Distinct meta keys actually used by a post type, minus obvious internal
+	 * keys (WP core, Yoast, oEmbed, our own). Hand-rolled + ACF fields remain.
+	 * @return string[]
+	 */
+	public static function metaKeysForType( string $post_type ): array {
+		global $wpdb;
+
+		$keys = $wpdb->get_col( $wpdb->prepare(
+			"SELECT DISTINCT m.meta_key
+			 FROM {$wpdb->postmeta} m
+			 INNER JOIN {$wpdb->posts} p ON p.ID = m.post_id
+			 WHERE p.post_type = %s
+			 AND m.meta_key NOT LIKE %s
+			 AND m.meta_key NOT LIKE %s
+			 AND m.meta_key NOT LIKE %s
+			 AND m.meta_key NOT LIKE %s
+			 ORDER BY m.meta_key",
+			$post_type, '\_edit%', '\_wp\_%', '\_oembed%', '\_yoast%'
+		) );
+
+		$skip = [ '_thumbnail_id', '_pingme', '_encloseme', '_snel_lang', '_snel_group', '_snel_src_hash' ];
+		return array_values( array_filter( $keys, function ( $k ) use ( $skip ) {
+			if ( in_array( $k, $skip, true ) ) {
+				return false;
+			}
+			return strpos( $k, '_yoast' ) !== 0 && strpos( $k, '_snel' ) !== 0;
+		} ) );
+	}
+
+	/** Admin-chosen translatable meta: [ post_type => [ meta_key, … ] ]. */
+	public static function getTranslatableMeta(): array {
+		$val = get_option( 'snel_translatable_meta', [] );
+		return is_array( $val ) ? $val : [];
+	}
+
+	public static function saveTranslatableMeta( array $map ): void {
+		update_option( 'snel_translatable_meta', $map );
+	}
 }

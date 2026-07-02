@@ -361,9 +361,14 @@ class Create {
 		}
 	}
 
-	/** Meta keys to AI-translate (filterable per post type). */
+	/**
+	 * Meta keys to AI-translate: the admin-selected fields (Custom Fields tab)
+	 * merged with anything declared via the filter (code).
+	 */
 	public static function translatable_meta_keys( string $post_type ): array {
-		return apply_filters( 'snel_translatable_meta_keys', [], $post_type );
+		$selected = Model::getTranslatableMeta();
+		$keys     = $selected[ $post_type ] ?? [];
+		return array_values( array_unique( apply_filters( 'snel_translatable_meta_keys', $keys, $post_type ) ) );
 	}
 
 	// ─── Block content translation ───────────────────────────────────────────

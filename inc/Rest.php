@@ -42,6 +42,9 @@ class Rest {
 
 		$this->route( '/orphans', 'GET',  [ $c, 'orphans_get' ],   $perm );
 		$this->route( '/orphan-action', 'POST', [ $c, 'orphan_action' ], $perm );
+
+		$this->route( '/fields', 'GET',  [ $c, 'fields_get' ],  $perm );
+		$this->route( '/fields', 'POST', [ $c, 'fields_save' ], $perm );
 	}
 
 	/** Thin register_rest_route wrapper. */

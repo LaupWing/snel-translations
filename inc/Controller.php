@@ -207,4 +207,51 @@ class Controller {
 
 		return new \WP_Error( 'bad_action', 'Unknown action.', [ 'status' => 400 ] );
 	}
+
+	// ─── Custom fields (translatable meta) ───────────────────────────────────
+
+	/** Public post types + their detected meta keys + current selection. */
+	public function fields_get() {
+		$selected = Model::getTranslatableMeta();
+		$out      = [];
+
+		foreach ( get_post_types( [ 'public' => true ], 'objects' ) as $pt ) {
+			if ( $pt->name === 'attachment' ) {
+				continue;
+			}
+			$keys = Model::metaKeysForType( $pt->name );
+			if ( empty( $keys ) ) {
+				continue;
+			}
+			$sel = $selected[ $pt->name ] ?? [];
+			$out[] = [
+				'postType' => $pt->name,
+				'label'    => $pt->labels->singular_name ?? $pt->name,
+				'fields'   => array_map( function ( $k ) use ( $sel ) {
+					return [ 'key' => $k, 'translate' => in_array( $k, $sel, true ) ];
+				}, $keys ),
+			];
+		}
+
+		return rest_ensure_response( $out );
+	}
+
+	/** Save the per-CPT translatable-meta selection. Body: { postType: [keys] }. */
+	public function fields_save( \WP_REST_Request $request ) {
+		$data = $request->get_json_params();
+		if ( ! is_array( $data ) ) {
+			return new \WP_Error( 'invalid_data', 'Expected an object of post types.', [ 'status' => 400 ] );
+		}
+
+		$clean = [];
+		foreach ( $data as $pt => $keys ) {
+			if ( ! is_array( $keys ) ) {
+				continue;
+			}
+			$clean[ sanitize_key( $pt ) ] = array_values( array_map( 'sanitize_text_field', $keys ) );
+		}
+
+		Model::saveTranslatableMeta( $clean );
+		return rest_ensure_response( [ 'success' => true ] );
+	}
 }
