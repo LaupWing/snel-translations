@@ -1,0 +1,128 @@
+<?php
+/**
+ * UrlGenerator — builds language-aware URLs.
+ *
+ * Adds the language prefix for non-default languages (default has none). For
+ * singular content, a language URL points at the *sibling* post's own permalink,
+ * so /en/ links resolve to the real English page with its translated slug.
+ *
+ * @package Snel\Translations
+ */
+
+namespace Snel\Translations\Core;
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+class UrlGenerator {
+
+	/** Cached CPT slug-translation config. */
+	private static ?array $cptSlugs = null;
+
+	/** Load + cache the CPT archive-slug translations (filterable). */
+	public static function cptSlugsConfig(): array {
+		if ( self::$cptSlugs === null ) {
+			$config = require SNEL_TR_DIR . 'config/slugs-cpt.php';
+			/** Projects can add CPT slug translations without editing the file. */
+			self::$cptSlugs = apply_filters( 'snel_cpt_slugs', is_array( $config ) ? $config : [] );
+		}
+
+		return self::$cptSlugs;
+	}
+
+	/**
+	 * URL for the current page in another language.
+	 *
+	 * Singular: link to the sibling translation's permalink (or that language's
+	 * home if none exists). Otherwise: swap the prefix on the current URL.
+	 */
+	public static function langUrl( string $target_lang ): string {
+		if ( is_singular() || is_page() ) {
+			$current_id = get_queried_object_id();
+			if ( $current_id ) {
+				$sibling_id = TranslationGroup::translation( $current_id, $target_lang );
+				if ( $sibling_id ) {
+					return self::prefixedPermalink( $sibling_id, $target_lang );
+				}
+				return self::homeUrl( $target_lang );
+			}
+		}
+
+		return self::swapPrefix( $target_lang );
+	}
+
+	/**
+	 * Public URL for a post in its own language. The prefix + CPT segment are
+	 * applied centrally by TranslationGroup::filterPermalink, so get_permalink()
+	 * already returns the correct language-prefixed URL — thin wrapper.
+	 */
+	public static function prefixedPermalink( int $post_id, string $lang ): string {
+		return get_permalink( $post_id );
+	}
+
+	/** Home-rooted URL for a language: homeUrl('en') → https://site/en/ */
+	private static function homeUrl( string $lang, string $path = '' ): string {
+		$path   = trim( $path, '/' );
+		$prefix = ( $lang === LocaleManager::default() ) ? '' : $lang . '/';
+		$full   = $prefix . ( $path !== '' ? $path . '/' : '' );
+		return home_url( '/' . $full );
+	}
+
+	/** Swap the language prefix on the current request URI (non-singular pages). */
+	private static function swapPrefix( string $target_lang ): string {
+		$default     = LocaleManager::default();
+		$langs       = LocaleManager::supported();
+		$current_url = $_SERVER['REQUEST_URI'] ?? '/';
+
+		$non_default = array_diff( $langs, [ $default ] );
+		if ( ! empty( $non_default ) ) {
+			$pattern     = '#^/(' . implode( '|', $non_default ) . ')(/|$)#';
+			$current_url = preg_replace( $pattern, '/', $current_url );
+		}
+		if ( empty( $current_url ) ) {
+			$current_url = '/';
+		}
+
+		if ( $target_lang === $default ) {
+			return home_url( $current_url );
+		}
+
+		return home_url( '/' . $target_lang . $current_url );
+	}
+
+	/**
+	 * Add the current language prefix to an internal URL. No-op for the default
+	 * language or a URL that already carries a prefix.
+	 */
+	public static function url( string $url ): string {
+		$lang    = LocaleManager::current();
+		$default = LocaleManager::default();
+
+		if ( $lang === $default ) {
+			return $url;
+		}
+
+		$langs       = LocaleManager::supported();
+		$non_default = array_diff( $langs, [ $default ] );
+		$parsed      = parse_url( $url );
+		$path        = $parsed['path'] ?? '/';
+
+		$pattern = '#^/(' . implode( '|', $non_default ) . ')(/|$)#';
+		if ( preg_match( $pattern, $path ) ) {
+			return $url; // already prefixed
+		}
+
+		$new_path = '/' . $lang . $path;
+
+		if ( isset( $parsed['scheme'], $parsed['host'] ) ) {
+			$host = $parsed['host'];
+			if ( isset( $parsed['port'] ) ) {
+				$host .= ':' . $parsed['port'];
+			}
+			return $parsed['scheme'] . '://' . $host . $new_path;
+		}
+
+		return $new_path;
+	}
+}
