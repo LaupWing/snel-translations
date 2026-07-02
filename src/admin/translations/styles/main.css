@@ -1,0 +1,24 @@
+@import "tailwindcss" important;
+
+.wrap .snel-translations-app {
+  margin: 0;
+  position: relative;
+  min-height: 400px;
+}
+
+.wrap:has(.snel-translations-app) #wpbody-content,
+#wpbody-content:has(.snel-translations-app) {
+  padding-bottom: 10px;
+}
+
+.snel-translations-app h1,
+.snel-translations-app h2,
+.snel-translations-app h3,
+.snel-translations-app h4,
+.snel-translations-app h5,
+.snel-translations-app h6,
+.snel-translations-app p {
+  margin: 0;
+  font-size: inherit;
+  line-height: inherit;
+}

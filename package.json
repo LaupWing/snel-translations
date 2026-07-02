@@ -1,0 +1,20 @@
+{
+  "name": "snel-translations",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build:admin": "for dir in src/admin/*/; do [ -f \"${dir}index.js\" ] && wp-scripts build ${dir}index.js --output-path=build/admin/$(basename $dir); done",
+    "build:editor": "for dir in src/editor/*/; do [ -f \"${dir}index.js\" ] && wp-scripts build ${dir}index.js --output-path=build/editor/$(basename $dir); done",
+    "build": "npm run build:admin && npm run build:editor",
+    "start:admin": "for dir in src/admin/*/; do [ -f \"${dir}index.js\" ] && wp-scripts start ${dir}index.js --output-path=build/admin/$(basename $dir) & done; wait",
+    "start:editor": "for dir in src/editor/*/; do [ -f \"${dir}index.js\" ] && wp-scripts start ${dir}index.js --output-path=build/editor/$(basename $dir) & done; wait"
+  },
+  "dependencies": {
+    "lucide-react": "^1.23.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.2",
+    "@wordpress/scripts": "^27.9.0",
+    "tailwindcss": "^4.1.8"
+  }
+}

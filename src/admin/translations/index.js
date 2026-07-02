@@ -1,9 +1,20 @@
-/**
- * Admin React entry point (skeleton).
- *
- * Mounts the Snel Translations admin UI (Languages / Settings / Debug) onto the
- * #snel-translations-root div that Admin::render() prints. The real components
- * get ported here from the theme in a later step.
- */
+import { createRoot } from '@wordpress/element';
+import Translations from './pages/Translations';
+import './styles/main.css';
 
-// TODO: mount the app (skeleton for now).
+function mountApp() {
+    const container = document.getElementById( 'snel-translations-root' );
+    if ( ! container ) return;
+
+    createRoot( container ).render(
+        <div className="snel-translations-app">
+            <Translations />
+        </div>
+    );
+}
+
+if ( document.readyState === 'loading' ) {
+    document.addEventListener( 'DOMContentLoaded', mountApp );
+} else {
+    mountApp();
+}
