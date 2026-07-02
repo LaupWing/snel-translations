@@ -160,9 +160,11 @@ class Create {
 		$new_id = wp_insert_post( [
 			'post_type'      => $source->post_type,
 			'post_status'    => 'draft',
-			'post_title'     => $tr['title'],
-			'post_content'   => $tr['content'],
-			'post_excerpt'   => $tr['excerpt'],
+			// wp_insert_post expects slashed data (it unslashes internally); without
+			// wp_slash the \uXXXX escapes serialize_blocks emits get corrupted.
+			'post_title'     => wp_slash( $tr['title'] ),
+			'post_content'   => wp_slash( $tr['content'] ),
+			'post_excerpt'   => wp_slash( $tr['excerpt'] ),
 			'post_parent'    => $new_parent,
 			'menu_order'     => $source->menu_order,
 			'comment_status' => $source->comment_status,
@@ -226,9 +228,10 @@ class Create {
 
 		$updated = wp_update_post( [
 			'ID'           => $target_id,
-			'post_title'   => $tr['title'],
-			'post_content' => $tr['content'],
-			'post_excerpt' => $tr['excerpt'],
+			// Slashed — wp_update_post unslashes internally (see ajax_create).
+			'post_title'   => wp_slash( $tr['title'] ),
+			'post_content' => wp_slash( $tr['content'] ),
+			'post_excerpt' => wp_slash( $tr['excerpt'] ),
 		], true );
 		if ( is_wp_error( $updated ) ) {
 			wp_send_json_error( [ 'message' => $updated->get_error_message() ] );
@@ -352,7 +355,7 @@ class Create {
 		$i = 0;
 		foreach ( $values as $key => $original ) {
 			if ( isset( $translated[ $i ] ) ) {
-				update_post_meta( $to, $key, $translated[ $i ] );
+				update_post_meta( $to, $key, wp_slash( $translated[ $i ] ) );
 			}
 			$i++;
 		}
