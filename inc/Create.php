@@ -374,7 +374,12 @@ class Create {
 			return $content;
 		}
 
-		$blocks  = parse_blocks( $content );
+		$blocks = parse_blocks( $content );
+		// Materialize block.json defaults for the translatable attributes, so a
+		// block using its defaults (nothing saved in content, e.g. a bare
+		// <!-- wp:snel/process /-->) still gets its text translated + persisted.
+		self::merge_translatable_defaults( $blocks );
+
 		$strings = [];
 		self::collect_strings( $blocks, $strings );
 
@@ -391,6 +396,40 @@ class Create {
 		self::apply_strings( $blocks, $translated, $idx );
 
 		return serialize_blocks( $blocks );
+	}
+
+	/**
+	 * Fill in block.json defaults for the DECLARED translatable attributes only,
+	 * pulled from the registered block type (theme-agnostic). parse_blocks() does
+	 * not include default attribute values, so without this a block using its
+	 * defaults would translate nothing.
+	 */
+	public static function merge_translatable_defaults( array &$blocks ): void {
+		$registry = \WP_Block_Type_Registry::get_instance();
+
+		foreach ( $blocks as &$block ) {
+			$name = $block['blockName'] ?? '';
+			if ( $name ) {
+				$type     = $registry->get_registered( $name );
+				$defaults = ( $type && $type->attributes ) ? $type->attributes : [];
+
+				foreach ( self::block_text_attrs( $name ) as $key ) {
+					if ( ! isset( $block['attrs'][ $key ] ) && isset( $defaults[ $key ]['default'] ) ) {
+						$block['attrs'][ $key ] = $defaults[ $key ]['default'];
+					}
+				}
+				foreach ( array_keys( self::block_repeater_attrs( $name ) ) as $attr ) {
+					if ( ! isset( $block['attrs'][ $attr ] ) && isset( $defaults[ $attr ]['default'] ) ) {
+						$block['attrs'][ $attr ] = $defaults[ $attr ]['default'];
+					}
+				}
+			}
+
+			if ( ! empty( $block['innerBlocks'] ) ) {
+				self::merge_translatable_defaults( $block['innerBlocks'] );
+			}
+		}
+		unset( $block );
 	}
 
 	/** Text attribute keys per Snel block (filterable). */
