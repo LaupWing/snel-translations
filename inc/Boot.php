@@ -39,11 +39,26 @@ class Boot {
 		require_once SNEL_TR_DIR . 'inc/core/Translator.php';
 		require_once SNEL_TR_DIR . 'inc/core/TermTranslation.php';
 
-		// ── Request layers (Model, Controller, Rest, Admin) — added later. ────
+		// ── Helpers + request/service layers ─────────────────────────────────
+		require_once SNEL_TR_DIR . 'inc/helpers.php';
+		require_once SNEL_TR_DIR . 'inc/Model.php';
+		require_once SNEL_TR_DIR . 'inc/Controller.php';
+		require_once SNEL_TR_DIR . 'inc/Rest.php';
+		require_once SNEL_TR_DIR . 'inc/Ai.php';
+		require_once SNEL_TR_DIR . 'inc/Create.php';
+		require_once SNEL_TR_DIR . 'inc/Nav.php';
+		require_once SNEL_TR_DIR . 'inc/Admin.php';
 
 		// ── Register the runtime ─────────────────────────────────────────────
-		// LocaleManager is a static utility — nothing to instantiate/register.
-		// Router::register() etc. will be called here once ported.
+		Core\Router::register();            // rewrite rules + resolve request → sibling
+		Core\TranslationGroup::register();  // permalink prefix + archive filter + save
+		Core\TermTranslation::register();   // translated term labels (front end)
+		Nav::register();                    // nav menu item resolution
+		Ai::register();                     // snel_translate AJAX
+		Create::register();                 // create/sync/state AJAX + editor data
+
+		new Rest();                         // REST endpoints (snel-translations/v1)
+		( new Admin() )->register();        // admin menu page + asset enqueue
 	}
 
 	/**
