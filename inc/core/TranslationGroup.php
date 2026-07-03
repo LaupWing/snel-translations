@@ -362,9 +362,14 @@ class TranslationGroup {
 		if ( in_array( 'any', $types, true ) ) {
 			return;
 		}
-		$skip = [ 'attachment', 'nav_menu_item', 'wp_block', 'wp_template', 'wp_template_part', 'revision' ];
+
+		// Only language-filter post types that are actually translated. Shared
+		// CPTs (partners/logos, etc.) must show in every language, and CPTs with
+		// their own fallback helpers (services/cases) shouldn't be scoped here.
+		// Sites add their translatable CPTs via the filter.
+		$translatable = (array) apply_filters( 'snel_translatable_post_types', [ 'post', 'page' ] );
 		foreach ( $types as $type ) {
-			if ( in_array( $type, $skip, true ) ) {
+			if ( ! in_array( $type, $translatable, true ) ) {
 				return;
 			}
 		}
