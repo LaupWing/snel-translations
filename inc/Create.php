@@ -285,7 +285,7 @@ class Create {
 
 		$tr = self::translate_source_fields( $source, $source_lang, $target, $memory );
 		if ( is_wp_error( $tr ) ) {
-			return [ 'ok' => false, 'message' => $tr->get_error_message() ];
+			return [ 'ok' => false, 'message' => $tr->get_error_message(), 'code' => $tr->get_error_code() ];
 		}
 
 		if ( $existing ) {

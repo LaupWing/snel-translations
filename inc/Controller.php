@@ -370,7 +370,11 @@ class Controller {
 
 		$res = Create::translate_one( $post_id, $lang, $publish );
 		if ( empty( $res['ok'] ) ) {
-			return new \WP_Error( 'translate_failed', $res['message'] ?? 'Translation failed', [ 'status' => 500 ] );
+			return new \WP_Error(
+				$res['code'] ?? 'translate_failed',
+				$res['message'] ?? 'Translation failed',
+				[ 'status' => 500 ]
+			);
 		}
 		return rest_ensure_response( $res );
 	}

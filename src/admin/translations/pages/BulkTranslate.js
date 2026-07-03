@@ -14,10 +14,11 @@ export default function BulkTranslate() {
     const [ done, setDone ]         = useState( 0 );
     const [ current, setCurrent ]   = useState( '' );
     const [ failed, setFailed ]     = useState( [] );
+    const [ quotaStop, setQuotaStop ] = useState( false );
     const cancelRef = useRef( false );
 
     const reset = () => {
-        setPhase( 'idle' ); setTotal( 0 ); setDone( 0 ); setCurrent( '' ); setFailed( [] );
+        setPhase( 'idle' ); setTotal( 0 ); setDone( 0 ); setCurrent( '' ); setFailed( [] ); setQuotaStop( false );
     };
 
     const close = () => {
@@ -53,12 +54,20 @@ export default function BulkTranslate() {
                 } );
                 if ( ! r.ok ) {
                     const j = await r.json().catch( () => ( {} ) );
+                    // Quota/billing exhausted — no point continuing; stop the run.
+                    if ( j.code === 'snel_ai_quota' ) {
+                        setQuotaStop( true );
+                        setDone( i );
+                        break;
+                    }
                     fails.push( `${ it.title } (${ it.langLabel }): ${ j.message || r.status }` );
                 }
             } catch ( e ) {
                 fails.push( `${ it.title } (${ it.langLabel })` );
             }
             setDone( i + 1 );
+            // Gentle throttle so big runs stay under rate limits.
+            await new Promise( ( res ) => setTimeout( res, 250 ) );
         }
         setFailed( fails );
         setCurrent( '' );
@@ -113,6 +122,16 @@ export default function BulkTranslate() {
 
                             { phase === 'done' && (
                                 <>
+                                    { quotaStop && (
+                                        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3">
+                                            <p className="flex items-center gap-1.5 text-sm font-semibold text-red-800">
+                                                <AlertTriangle size={ 15 } /> { __( 'Stopped — AI provider out of quota', 'snel' ) }
+                                            </p>
+                                            <p className="mt-1 text-xs text-red-700">
+                                                { __( 'Your AI provider rejected the requests (no credit / billing). Add billing at your provider, then run this again — it resumes with what is still missing.', 'snel' ) }
+                                            </p>
+                                        </div>
+                                    ) }
                                     { total === 0 ? (
                                         <p className="flex items-center gap-2 text-sm text-green-700">
                                             <Check size={ 18 } /> { __( 'Everything is already translated and up to date.', 'snel' ) }

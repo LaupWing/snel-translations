@@ -1,6 +1,6 @@
 {
   "name": "snel-translations",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": true,
   "scripts": {
     "build:admin": "for dir in src/admin/*/; do [ -f \"${dir}index.js\" ] && wp-scripts build ${dir}index.js --output-path=build/admin/$(basename $dir); done",

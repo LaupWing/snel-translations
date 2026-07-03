@@ -99,7 +99,25 @@ class Ai {
 			return new \WP_Error( 'snel_ai_no_provider', 'No AI provider configured. Add one under Settings → Connectors.' );
 		}
 
-		$output = $builder->generate_text();
+		// Retry transient rate limits with backoff; fail fast on quota/billing.
+		$max_attempts = 3;
+		$output       = null;
+		for ( $attempt = 1; $attempt <= $max_attempts; $attempt++ ) {
+			$output = $builder->generate_text();
+			if ( ! is_wp_error( $output ) ) {
+				break;
+			}
+			$msg = $output->get_error_message();
+
+			if ( self::is_quota_error( $msg ) ) {
+				return new \WP_Error( 'snel_ai_quota', 'AI provider is out of quota/credits — add billing and retry. (' . $msg . ')' );
+			}
+			if ( self::is_rate_limit( $msg ) && $attempt < $max_attempts ) {
+				sleep( 2 * $attempt ); // 2s, then 4s
+				continue;
+			}
+			return new \WP_Error( 'snel_ai_failed', 'AI request failed: ' . $msg );
+		}
 		if ( is_wp_error( $output ) ) {
 			return new \WP_Error( 'snel_ai_failed', 'AI request failed: ' . $output->get_error_message() );
 		}
@@ -118,5 +136,21 @@ class Ai {
 		}
 
 		return $translations;
+	}
+
+	/** Quota/billing exhausted — permanent, don't retry, stop the batch. */
+	private static function is_quota_error( string $msg ): bool {
+		$m = strtolower( $msg );
+		return strpos( $m, 'insufficient_quota' ) !== false
+			|| strpos( $m, 'exceeded your current quota' ) !== false
+			|| strpos( $m, 'billing' ) !== false;
+	}
+
+	/** Transient rate limit — safe to retry after a short wait. */
+	private static function is_rate_limit( string $msg ): bool {
+		$m = strtolower( $msg );
+		return strpos( $m, '429' ) !== false
+			|| strpos( $m, 'too many requests' ) !== false
+			|| strpos( $m, 'rate limit' ) !== false;
 	}
 }
