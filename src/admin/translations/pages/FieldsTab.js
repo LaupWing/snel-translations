@@ -1,6 +1,7 @@
 import { useState, useEffect } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
-import { Button } from '@wordpress/components';
+import TabHeader from '../components/TabHeader';
+import Btn from '../components/Btn';
 
 // Detect each CPT's custom meta fields and let the user pick which get
 // AI-translated when creating/syncing a translation. Saved to an option the
@@ -57,16 +58,23 @@ export default function FieldsTab() {
 
     return (
         <div className="max-w-2xl">
-            <p className="text-sm text-gray-500 mb-5">
-                { __( 'Pick which custom fields (post meta) get AI-translated when you create or sync a translation. Detected per post type. Flat text fields only — repeaters/groups are not translated.', 'snel' ) }
-            </p>
+            <TabHeader
+                title={ __( 'Custom fields', 'snel' ) }
+                description={ __( 'Pick which post-meta fields get AI-translated on create/sync. Flat text fields only.', 'snel' ) }
+            >
+                <Btn variant="primary" busy={ saving } disabled={ saving } onClick={ save }>
+                    { __( 'Save', 'snel' ) }
+                </Btn>
+            </TabHeader>
+
+            { status && <p className="text-sm text-gray-600 mb-3">{ status }</p> }
 
             { groups.length === 0 && (
                 <p className="text-sm text-gray-400">{ __( 'No custom fields detected.', 'snel' ) }</p>
             ) }
 
             { groups.map( ( g ) => (
-                <div key={ g.postType } className="border border-gray-200 rounded-lg mb-3 overflow-hidden">
+                <div key={ g.postType } className="border border-gray-200 rounded-lg mb-3 overflow-hidden bg-white">
                     <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
                         <span className="text-sm font-semibold text-gray-800">{ g.label }</span>
                         <span className="ml-1 text-xs text-gray-400">({ g.postType })</span>
@@ -88,13 +96,6 @@ export default function FieldsTab() {
                     </div>
                 </div>
             ) ) }
-
-            <div className="mt-4 flex items-center gap-3">
-                <Button variant="primary" onClick={ save } isBusy={ saving } disabled={ saving }>
-                    { __( 'Save', 'snel' ) }
-                </Button>
-                { status && <span className="text-sm text-gray-600">{ status }</span> }
-            </div>
         </div>
     );
 }

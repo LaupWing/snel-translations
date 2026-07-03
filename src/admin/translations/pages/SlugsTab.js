@@ -1,6 +1,8 @@
 import { useState, useEffect } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
-import { Button } from '@wordpress/components';
+import { Languages } from 'lucide-react';
+import TabHeader from '../components/TabHeader';
+import Btn from '../components/Btn';
 
 // Per-language URL slug for each custom post type's archive base. Global (not
 // per-post) — set once, applies to every CPT URL in that language.
@@ -98,12 +100,22 @@ export default function SlugsTab() {
 
     return (
         <div className="max-w-3xl">
-            <p className="text-sm text-gray-500 mb-5">
-                { __( 'Translate the URL base of each custom post type per language. Leave blank to keep the default slug. Individual post slugs are set on each translated post.', 'snel' ) }
-            </p>
+            <TabHeader
+                title={ __( 'URL slugs', 'snel' ) }
+                description={ __( 'Translate the URL base of each custom post type per language. Blank keeps the default slug.', 'snel' ) }
+            >
+                <Btn variant="ai" icon={ Languages } busy={ translating } disabled={ saving || translating } onClick={ translateAll }>
+                    { __( 'Translate all', 'snel' ) }
+                </Btn>
+                <Btn variant="primary" busy={ saving } disabled={ saving || translating } onClick={ save }>
+                    { __( 'Save', 'snel' ) }
+                </Btn>
+            </TabHeader>
 
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
+            { status && <p className="text-sm text-gray-600 mb-3">{ status }</p> }
+
+            <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                <table className="w-full text-sm bg-white">
                     <thead>
                         <tr className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
                             <th className="px-4 py-2.5 font-semibold">{ __( 'Post type', 'snel' ) }</th>
@@ -135,16 +147,6 @@ export default function SlugsTab() {
                         ) ) }
                     </tbody>
                 </table>
-            </div>
-
-            <div className="mt-4 flex items-center gap-3">
-                <Button variant="primary" onClick={ save } isBusy={ saving } disabled={ saving || translating }>
-                    { __( 'Save', 'snel' ) }
-                </Button>
-                <Button variant="secondary" onClick={ translateAll } isBusy={ translating } disabled={ saving || translating }>
-                    { __( 'Translate all', 'snel' ) }
-                </Button>
-                { status && <span className="text-sm text-gray-600">{ status }</span> }
             </div>
         </div>
     );

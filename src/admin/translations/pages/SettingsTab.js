@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
-import { SelectControl, Button } from '@wordpress/components';
+import { SelectControl } from '@wordpress/components';
+import TabHeader from '../components/TabHeader';
+import Btn from '../components/Btn';
+import Notice from '../components/Notice';
 
 export default function SettingsTab() {
     const data = window.snelTranslations || {};
@@ -155,6 +158,17 @@ export default function SettingsTab() {
 
     return (
         <div className="max-w-xl">
+            <TabHeader
+                title={ __( 'Languages', 'snel' ) }
+                description={ __( 'Enable languages and pick the source language.', 'snel' ) }
+            >
+                <Btn variant="primary" busy={ busy } disabled={ busy } onClick={ save }>
+                    { __( 'Save', 'snel' ) }
+                </Btn>
+            </TabHeader>
+
+            { status && <p className="text-sm text-gray-600 mb-3">{ status }</p> }
+
             {/* Enabled languages */}
             <div className="mb-6">
                 <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
@@ -196,16 +210,11 @@ export default function SettingsTab() {
             </p>
 
             { data.translationsExist && (
-                <p className="text-sm mb-4 p-2.5 rounded" style={ { background: '#fcf3e3', borderLeft: '4px solid #dba617' } }>
+                <Notice tone="warn">
                     <strong>⚠ { __( 'Translations already exist.', 'snel' ) }</strong>{ ' ' }
                     { __( 'Changing the default language moves every URL (the prefix shifts) — best done before launch.', 'snel' ) }
-                </p>
+                </Notice>
             ) }
-
-            <Button variant="primary" onClick={ save } isBusy={ busy } disabled={ busy }>
-                { __( 'Save', 'snel' ) }
-            </Button>
-            { status && <span className="ml-3 text-sm text-gray-600">{ status }</span> }
 
             {/* Languages JSON editor (advanced) */}
             <div className="mt-8 border-t border-gray-200 pt-5">
@@ -219,13 +228,10 @@ export default function SettingsTab() {
 
                 { showJson && (
                     <div className="mt-3">
-                        <div
-                            className="text-sm mb-3 p-3 rounded"
-                            style={ { background: '#fdecea', borderLeft: '4px solid #d63638' } }
-                        >
+                        <Notice tone="error">
                             <strong>⚠ { __( 'Danger — read first.', 'snel' ) }</strong>{ ' ' }
                             { __( 'This rewrites the site’s language list. Removing a language does NOT delete its pages — you must remove those yourself (that cleanup is not automated yet). Renaming a code breaks the existing URLs for that language. Save, then reload the admin.', 'snel' ) }
-                        </div>
+                        </Notice>
 
                         <textarea
                             ref={ textareaRef }
@@ -237,16 +243,16 @@ export default function SettingsTab() {
                             style={ { fontFamily: 'monospace', whiteSpace: 'pre', tabSize: 2 } }
                         />
 
-                        <div className="mt-2 flex items-center gap-3">
-                            <Button variant="primary" onClick={ saveJson } isBusy={ jsonBusy } disabled={ jsonBusy }>
+                        <div className="mt-2 flex items-center gap-2">
+                            <Btn variant="primary" busy={ jsonBusy } disabled={ jsonBusy } onClick={ saveJson }>
                                 { __( 'Save languages', 'snel' ) }
-                            </Button>
-                            <Button variant="secondary" onClick={ downloadJson }>
+                            </Btn>
+                            <Btn variant="secondary" onClick={ downloadJson }>
                                 { __( 'Download .json', 'snel' ) }
-                            </Button>
-                            <Button variant="secondary" onClick={ importJson }>
+                            </Btn>
+                            <Btn variant="secondary" onClick={ importJson }>
                                 { __( 'Import .json', 'snel' ) }
-                            </Button>
+                            </Btn>
                             <input
                                 ref={ fileInputRef }
                                 type="file"

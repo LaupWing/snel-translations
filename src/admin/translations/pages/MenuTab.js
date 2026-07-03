@@ -1,6 +1,7 @@
 import { useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { Save, ExternalLink, Search, Languages, Loader2 } from 'lucide-react';
+import Btn from '../components/Btn';
 import Highlight from '../components/Highlight';
 import EditableCell from '../components/EditableCell';
 
@@ -173,28 +174,18 @@ export default function MenuTab( { initialSearch = '' } ) {
                     { menuEditUrl && (
                         <a
                             href={ menuEditUrl }
-                            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                         >
-                            <ExternalLink size={ 14 } />
+                            <ExternalLink size={ 16 } />
                             { __( 'Edit Menu', 'snel' ) }
                         </a>
                     ) }
-                    <button
-                        onClick={ aiTranslate }
-                        disabled={ aiBusy || saving }
-                        className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors disabled:opacity-50"
-                    >
-                        { aiBusy ? <Loader2 size={ 14 } className="animate-spin" /> : <Languages size={ 14 } /> }
+                    <Btn variant="ai" icon={ Languages } busy={ aiBusy } disabled={ aiBusy || saving } onClick={ aiTranslate }>
                         { aiBusy ? __( 'Translating...', 'snel' ) : __( 'Translate with AI', 'snel' ) }
-                    </button>
-                    <button
-                        onClick={ handleSave }
-                        disabled={ saving }
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                    >
-                        <Save size={ 16 } />
+                    </Btn>
+                    <Btn variant="primary" icon={ Save } busy={ saving } disabled={ saving } onClick={ handleSave }>
                         { saving ? __( 'Saving...', 'snel' ) : __( 'Save Translations', 'snel' ) }
-                    </button>
+                    </Btn>
                 </div>
             </div>
 
