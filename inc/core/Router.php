@@ -26,6 +26,8 @@ class Router {
 		add_filter( 'request', [ self::class, 'interceptLanguageUrl' ], 1 );
 		add_filter( 'request', [ self::class, 'fixFrontPage' ] );
 		add_filter( 'request', [ self::class, 'resolveLanguagePost' ], 20 );
+		add_filter( 'option_page_for_posts', [ self::class, 'filterPostsPageId' ] );
+		add_filter( 'option_page_on_front', [ self::class, 'filterFrontPageId' ] );
 		add_filter( 'redirect_canonical', [ self::class, 'preventCanonicalRedirect' ], 10, 2 );
 
 		// Force one flush after deploy if the rules are stale.
@@ -42,6 +44,43 @@ class Router {
 	public static function registerQueryVars( array $vars ): array {
 		$vars[] = 'lang';
 		return $vars;
+	}
+
+	/** @var array<string,int> per-language cache for the option filters. */
+	private static array $pageOptionCache = [];
+
+	/** Re-entrancy guard: current() may read these same options. */
+	private static bool $inPageOption = false;
+
+	/** Swap the posts page (blog index) to the current language's sibling. */
+	public static function filterPostsPageId( $value ) {
+		return self::translatedPageOption( 'posts', (int) $value );
+	}
+
+	/** Swap the static front page to the current language's sibling. */
+	public static function filterFrontPageId( $value ) {
+		return self::translatedPageOption( 'front', (int) $value );
+	}
+
+	private static function translatedPageOption( string $key, int $value ) {
+		if ( is_admin() || ! $value || self::$inPageOption ) {
+			return $value;
+		}
+		self::$inPageOption = true;
+		$lang               = LocaleManager::current();
+		self::$inPageOption = false;
+
+		if ( $lang === LocaleManager::default() ) {
+			return $value;
+		}
+		$cache = $key . ':' . $lang;
+		if ( ! isset( self::$pageOptionCache[ $cache ] ) ) {
+			self::$inPageOption               = true;
+			$sibling                          = (int) TranslationGroup::translation( $value, $lang );
+			self::$pageOptionCache[ $cache ] = ( $sibling && get_post_status( $sibling ) === 'publish' ) ? $sibling : $value;
+			self::$inPageOption               = false;
+		}
+		return self::$pageOptionCache[ $cache ];
 	}
 
 	/**
