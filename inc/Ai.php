@@ -76,6 +76,33 @@ class Ai {
 			return new \WP_Error( 'snel_ai_unavailable', 'AI Client unavailable. Requires WordPress 7.0+ with a provider configured under Settings → Connectors.' );
 		}
 
+		// Translate in batches so each request stays small enough to return
+		// before the HTTP timeout, and to reduce segment-count drift on long input.
+		$chunk_size = (int) apply_filters( 'snel_ai_chunk_size', 20 );
+		if ( $chunk_size < 1 ) {
+			$chunk_size = 20;
+		}
+
+		// Give the AI call more room than WP's 30s default (best effort — an
+		// explicit provider timeout still wins; batching is the real fix).
+		add_filter( 'http_request_timeout', [ self::class, 'raiseTimeout' ], 99 );
+
+		$out = [];
+		foreach ( array_chunk( $texts, $chunk_size ) as $chunk ) {
+			$res = self::translate_chunk( $chunk, $source, $target );
+			if ( is_wp_error( $res ) ) {
+				remove_filter( 'http_request_timeout', [ self::class, 'raiseTimeout' ], 99 );
+				return $res; // propagate (quota code etc.)
+			}
+			$out = array_merge( $out, $res );
+		}
+
+		remove_filter( 'http_request_timeout', [ self::class, 'raiseTimeout' ], 99 );
+		return $out;
+	}
+
+	/** Translate one batch of strings in a single AI request. @return array|\WP_Error */
+	private static function translate_chunk( array $texts, string $source, string $target ) {
 		$lang_names = [
 			'nl' => 'Dutch',   'en' => 'English', 'de' => 'German',
 			'fr' => 'French',  'es' => 'Spanish', 'it' => 'Italian',
@@ -136,6 +163,11 @@ class Ai {
 		}
 
 		return $translations;
+	}
+
+	/** Raise WP's HTTP timeout for AI calls (never lowers it). */
+	public static function raiseTimeout( $timeout ) {
+		return max( (int) $timeout, 60 );
 	}
 
 	/** Quota/billing exhausted — permanent, don't retry, stop the batch. */
