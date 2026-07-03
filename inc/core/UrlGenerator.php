@@ -24,8 +24,20 @@ class UrlGenerator {
 	public static function cptSlugsConfig(): array {
 		if ( self::$cptSlugs === null ) {
 			$config = require SNEL_TR_DIR . 'config/slugs-cpt.php';
-			/** Projects can add CPT slug translations without editing the file. */
-			self::$cptSlugs = apply_filters( 'snel_cpt_slugs', is_array( $config ) ? $config : [] );
+			$config = is_array( $config ) ? $config : [];
+
+			// Admin-entered slug translations (Slugs tab). Keyed by default slug.
+			$saved = get_option( 'snel_cpt_slugs', [] );
+			if ( is_array( $saved ) ) {
+				foreach ( $saved as $slug => $langs ) {
+					if ( is_array( $langs ) ) {
+						$config[ $slug ] = array_merge( $config[ $slug ] ?? [], $langs );
+					}
+				}
+			}
+
+			/** Projects can also add CPT slug translations in code. */
+			self::$cptSlugs = apply_filters( 'snel_cpt_slugs', $config );
 		}
 
 		return self::$cptSlugs;

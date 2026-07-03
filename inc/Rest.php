@@ -45,6 +45,10 @@ class Rest {
 
 		$this->route( '/fields', 'GET',  [ $c, 'fields_get' ],  $perm );
 		$this->route( '/fields', 'POST', [ $c, 'fields_save' ], $perm );
+
+		$this->route( '/cpt-slugs', 'GET',  [ $c, 'cptslugs_get' ],  $perm );
+		$this->route( '/cpt-slugs', 'POST', [ $c, 'cptslugs_save' ], $perm );
+		$this->route( '/cpt-slugs/translate', 'POST', [ $c, 'cptslugs_translate' ], $perm );
 	}
 
 	/** Thin register_rest_route wrapper. */

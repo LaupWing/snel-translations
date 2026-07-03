@@ -193,4 +193,16 @@ class Model {
 	public static function saveTranslatableMeta( array $map ): void {
 		update_option( 'snel_translatable_meta', $map );
 	}
+
+	// ─── CPT slug translations ───────────────────────────────────────────────
+
+	/** Per-language CPT archive slugs: [ default_slug => [ lang => slug ] ]. */
+	public static function getCptSlugs(): array {
+		$v = get_option( 'snel_cpt_slugs', [] );
+		return is_array( $v ) ? $v : [];
+	}
+
+	public static function saveCptSlugs( array $map ): void {
+		update_option( 'snel_cpt_slugs', $map );
+	}
 }

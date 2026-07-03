@@ -59,8 +59,9 @@ class Router {
 		// Every public custom post type + taxonomy, routed under each language
 		// using its own rewrite slug (same slug across languages). Generic — no
 		// per-project config, no per-link work.
-		$cpts  = get_post_types( [ 'public' => true, '_builtin' => false ], 'objects' );
-		$taxes = get_taxonomies( [ 'public' => true ], 'objects' );
+		$cpts     = get_post_types( [ 'public' => true, '_builtin' => false ], 'objects' );
+		$taxes    = get_taxonomies( [ 'public' => true ], 'objects' );
+		$cpt_slug = UrlGenerator::cptSlugsConfig(); // [ default_slug => [ lang => slug ] ]
 
 		$slug_of = function ( $obj ) {
 			return ( is_array( $obj->rewrite ) && ! empty( $obj->rewrite['slug'] ) ) ? $obj->rewrite['slug'] : $obj->name;
@@ -78,9 +79,11 @@ class Router {
 			add_rewrite_rule( "^{$lang}/?$", "index.php?lang={$lang}", 'top' );
 			add_rewrite_rule( "^{$lang}/page/([0-9]+)/?$", "index.php?lang={$lang}&paged=\$matches[1]", 'top' );
 
-			// CPT archives + singles.
+			// CPT archives + singles. URL uses the translated slug (if set); the
+			// post_type query var stays the real CPT name.
 			foreach ( $cpts as $cpt ) {
-				$slug = $slug_of( $cpt );
+				$default_slug = $slug_of( $cpt );
+				$slug         = ! empty( $cpt_slug[ $default_slug ][ $lang ] ) ? $cpt_slug[ $default_slug ][ $lang ] : $default_slug;
 				if ( $cpt->has_archive ) {
 					add_rewrite_rule( "^{$lang}/{$slug}/?$", "index.php?lang={$lang}&post_type={$cpt->name}", 'top' );
 				}

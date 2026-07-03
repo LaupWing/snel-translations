@@ -16,6 +16,7 @@ namespace Snel\Translations;
 use Snel\Translations\Core\LocaleManager;
 use Snel\Translations\Core\TranslationGroup;
 use Snel\Translations\Core\Translator;
+use Snel\Translations\Core\UrlGenerator;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -253,5 +254,93 @@ class Controller {
 
 		Model::saveTranslatableMeta( $clean );
 		return rest_ensure_response( [ 'success' => true ] );
+	}
+
+	// ─── CPT slug translations ───────────────────────────────────────────────
+
+	/** Public CPTs + default slug + per-language slug (for non-default langs). */
+	public function cptslugs_get() {
+		$cfg   = UrlGenerator::cptSlugsConfig();
+		$langs = array_values( array_diff( LocaleManager::supported(), [ LocaleManager::default() ] ) );
+		$items = [];
+
+		foreach ( get_post_types( [ 'public' => true, '_builtin' => false ], 'objects' ) as $pt ) {
+			$slug = ( is_array( $pt->rewrite ) && ! empty( $pt->rewrite['slug'] ) ) ? $pt->rewrite['slug'] : $pt->name;
+			$tr   = [];
+			foreach ( $langs as $l ) {
+				$tr[ $l ] = $cfg[ $slug ][ $l ] ?? '';
+			}
+			$items[] = [
+				'postType'     => $pt->name,
+				'label'        => $pt->labels->singular_name ?? $pt->name,
+				'defaultSlug'  => $slug,
+				'translations' => $tr,
+			];
+		}
+
+		return rest_ensure_response( [ 'langs' => $langs, 'items' => $items ] );
+	}
+
+	/** Save slug translations. Body: { default_slug: { en: slug, … } }. */
+	public function cptslugs_save( \WP_REST_Request $request ) {
+		$data = $request->get_json_params();
+		if ( ! is_array( $data ) ) {
+			return new \WP_Error( 'invalid_data', 'Expected an object keyed by slug.', [ 'status' => 400 ] );
+		}
+
+		$clean = [];
+		foreach ( $data as $slug => $langs ) {
+			if ( ! is_array( $langs ) ) {
+				continue;
+			}
+			$slug = sanitize_title( $slug );
+			foreach ( $langs as $lang => $value ) {
+				$value = sanitize_title( $value );
+				if ( $value !== '' ) {
+					$clean[ $slug ][ sanitize_key( $lang ) ] = $value;
+				}
+			}
+		}
+
+		Model::saveCptSlugs( $clean );
+		flush_rewrite_rules(); // slugs changed → rules must rebuild
+		return rest_ensure_response( [ 'success' => true ] );
+	}
+
+	/** AI-suggest a translated slug for every CPT × language. Does not save. */
+	public function cptslugs_translate() {
+		$default = LocaleManager::default();
+		$langs   = array_values( array_diff( LocaleManager::supported(), [ $default ] ) );
+		if ( empty( $langs ) ) {
+			return rest_ensure_response( [] );
+		}
+
+		$slugs = [];
+		foreach ( get_post_types( [ 'public' => true, '_builtin' => false ], 'objects' ) as $pt ) {
+			$slugs[] = ( is_array( $pt->rewrite ) && ! empty( $pt->rewrite['slug'] ) ) ? $pt->rewrite['slug'] : $pt->name;
+		}
+		$slugs = array_values( array_unique( $slugs ) );
+		if ( empty( $slugs ) ) {
+			return rest_ensure_response( [] );
+		}
+
+		// Translate the human form of each slug (hyphens → spaces), then slugify.
+		$sources = array_map( function ( $s ) { return str_replace( '-', ' ', $s ); }, $slugs );
+
+		$out = [];
+		foreach ( $langs as $lang ) {
+			$tr = Ai::translate( $sources, $default, $lang );
+			if ( is_wp_error( $tr ) ) {
+				return $tr;
+			}
+			foreach ( $slugs as $i => $slug ) {
+				$suggest = sanitize_title( $tr[ $i ] ?? '' );
+				if ( $suggest !== '' ) {
+					$out[ $slug ][ $lang ] = $suggest;
+				}
+			}
+		}
+
+		return rest_ensure_response( $out );
 	}
 }
