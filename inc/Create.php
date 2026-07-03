@@ -29,6 +29,9 @@ class Create {
 	/** Meta key on a translation storing the source signature it was built from. */
 	const HASH_META = '_snel_src_hash';
 
+	/** Meta key: translation memory { source text => translated text } for reuse. */
+	const TM_META = '_snel_tm';
+
 	/** Register AJAX handlers + editor data. Called from Boot when live. */
 	public static function register(): void {
 		add_action( 'wp_ajax_snel_create_translation', [ self::class, 'ajax_create' ] );
@@ -180,7 +183,10 @@ class Create {
 
 		self::copy_meta( $source_id, $new_id );
 		self::copy_terms( $source_id, $new_id );
-		self::translate_meta( $source_id, $new_id, $source_lang, $target );
+
+		$memory = $tr['memory'] ?? [];
+		self::translate_meta( $source_id, $new_id, $source_lang, $target, [], $memory );
+		self::store_memory( $new_id, $memory );
 
 		update_post_meta( $new_id, self::HASH_META, self::source_signature( $source_id ) );
 
@@ -221,8 +227,9 @@ class Create {
 		}
 
 		$source_lang = TranslationGroup::langOf( $source_id );
+		$memory      = self::load_memory( $target_id );
 
-		$tr = self::translate_source_fields( $source, $source_lang, $target );
+		$tr = self::translate_source_fields( $source, $source_lang, $target, $memory );
 		if ( is_wp_error( $tr ) ) {
 			wp_send_json_error( [ 'message' => $tr->get_error_message() ] );
 		}
@@ -239,7 +246,10 @@ class Create {
 		}
 
 		self::copy_terms( $source_id, $target_id );
-		self::translate_meta( $source_id, $target_id, $source_lang, $target );
+
+		$new_memory = $tr['memory'] ?? [];
+		self::translate_meta( $source_id, $target_id, $source_lang, $target, $memory, $new_memory );
+		self::store_memory( $target_id, $new_memory );
 		update_post_meta( $target_id, self::HASH_META, self::source_signature( $source_id ) );
 
 		wp_send_json_success( [
@@ -254,17 +264,19 @@ class Create {
 	 * Translate a source's title, excerpt and block content into a target lang.
 	 * @return array|\WP_Error ['title'=>…, 'excerpt'=>…, 'content'=>…]
 	 */
-	public static function translate_source_fields( \WP_Post $source, string $source_lang, string $target ) {
+	public static function translate_source_fields( \WP_Post $source, string $source_lang, string $target, array $memory = [] ) {
+		$new_memory = [];
+
 		$meta_texts = [ $source->post_title ];
 		if ( $source->post_excerpt !== '' ) {
 			$meta_texts[] = $source->post_excerpt;
 		}
-		$meta_tr = Ai::translate( $meta_texts, $source_lang, $target );
+		$meta_tr = self::translate_batch( $meta_texts, $source_lang, $target, $memory, $new_memory );
 		if ( is_wp_error( $meta_tr ) ) {
 			return $meta_tr;
 		}
 
-		$content = self::translate_block_content( $source->post_content, $source_lang, $target );
+		$content = self::translate_block_content( $source->post_content, $source_lang, $target, $memory, $new_memory );
 		if ( is_wp_error( $content ) ) {
 			return $content;
 		}
@@ -273,7 +285,64 @@ class Create {
 			'title'   => $meta_tr[0] ?? $source->post_title,
 			'excerpt' => ( $source->post_excerpt !== '' && isset( $meta_tr[1] ) ) ? $meta_tr[1] : '',
 			'content' => $content,
+			'memory'  => $new_memory,
 		];
+	}
+
+	/**
+	 * Translate a list of strings, reusing $memory for ones already translated
+	 * (translation memory) so only new/changed text hits the AI. Records every
+	 * result into $new_memory (source text => translated text) for next time.
+	 * Preserves input order; returns WP_Error only if the AI call fails.
+	 */
+	private static function translate_batch( array $texts, string $source, string $target, array $memory, array &$new_memory ) {
+		$misses = [];
+		foreach ( $texts as $t ) {
+			if ( $t !== '' && ! array_key_exists( $t, $memory ) && ! in_array( $t, $misses, true ) ) {
+				$misses[] = $t;
+			}
+		}
+
+		$fresh = [];
+		if ( ! empty( $misses ) ) {
+			$tr = Ai::translate( array_values( $misses ), $source, $target );
+			if ( is_wp_error( $tr ) ) {
+				return $tr;
+			}
+			foreach ( array_values( $misses ) as $i => $m ) {
+				$fresh[ $m ] = $tr[ $i ] ?? $m;
+			}
+		}
+
+		$out = [];
+		foreach ( $texts as $t ) {
+			if ( $t === '' ) {
+				$out[] = '';
+				continue;
+			}
+			$val               = $memory[ $t ] ?? $fresh[ $t ] ?? $t;
+			$out[]             = $val;
+			$new_memory[ $t ]  = $val;
+		}
+		return $out;
+	}
+
+	/** Load a translation's stored memory map. */
+	public static function load_memory( int $post_id ): array {
+		$raw = get_post_meta( $post_id, self::TM_META, true );
+		if ( ! is_string( $raw ) || $raw === '' ) {
+			return [];
+		}
+		$data = json_decode( $raw, true );
+		return is_array( $data ) ? $data : [];
+	}
+
+	/** Persist a translation's memory map. */
+	public static function store_memory( int $post_id, array $memory ): void {
+		if ( empty( $memory ) ) {
+			return;
+		}
+		update_post_meta( $post_id, self::TM_META, wp_slash( (string) wp_json_encode( $memory ) ) );
 	}
 
 	/** md5 of everything that gets translated on a source (title/excerpt/blocks/meta). */
@@ -283,11 +352,11 @@ class Create {
 			return '';
 		}
 
-		$parts = [ $post->post_title, $post->post_excerpt ];
-
-		$strings = [];
-		self::collect_strings( parse_blocks( $post->post_content ), $strings );
-		$parts = array_merge( $parts, $strings );
+		// Hash the FULL block markup (structure + settings + text), not just the
+		// translatable strings — so a settings/layout change also marks
+		// translations outdated. Re-syncing is cheap: the translation memory
+		// reuses unchanged text, so only genuinely new text hits the AI.
+		$parts = [ $post->post_title, $post->post_excerpt, $post->post_content ];
 
 		foreach ( self::translatable_meta_keys( $post->post_type ) as $key ) {
 			$val = get_post_meta( $source_id, $key, true );
@@ -350,7 +419,7 @@ class Create {
 	}
 
 	/** AI-translate declared text meta keys onto a translation, in place. */
-	public static function translate_meta( int $from, int $to, string $source, string $target ): void {
+	public static function translate_meta( int $from, int $to, string $source, string $target, array $memory = [], array &$new_memory = [] ): void {
 		$keys = self::translatable_meta_keys( get_post_type( $from ) );
 		if ( empty( $keys ) ) {
 			return;
@@ -367,7 +436,8 @@ class Create {
 			return;
 		}
 
-		$translated = Ai::translate( array_values( $values ), $source, $target );
+		// Reuse the memory so a settings-only sync doesn't re-translate meta.
+		$translated = self::translate_batch( array_values( $values ), $source, $target, $memory, $new_memory );
 		if ( is_wp_error( $translated ) ) {
 			return; // leave the copied source values in place
 		}
@@ -394,7 +464,7 @@ class Create {
 	// ─── Block content translation ───────────────────────────────────────────
 
 	/** Translate the text inside block content, returning new block markup. */
-	public static function translate_block_content( string $content, string $source, string $target ) {
+	public static function translate_block_content( string $content, string $source, string $target, array $memory = [], array &$new_memory = [] ) {
 		if ( trim( $content ) === '' ) {
 			return $content;
 		}
@@ -412,7 +482,10 @@ class Create {
 			return $content;
 		}
 
-		$translated = Ai::translate( $strings, $source, $target );
+		// Reuse the memory for unchanged strings; only new/changed text is sent
+		// to the AI. Structure/settings come from the (current) source blocks, so
+		// a settings-only change re-applies for free.
+		$translated = self::translate_batch( $strings, $source, $target, $memory, $new_memory );
 		if ( is_wp_error( $translated ) ) {
 			return $translated;
 		}
