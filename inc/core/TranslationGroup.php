@@ -331,5 +331,60 @@ class TranslationGroup {
 		add_filter( 'post_type_link', [ self::class, 'filterPermalink' ], 10, 2 );
 
 		add_action( 'pre_get_posts', [ self::class, 'filterArchives' ] );
+		add_action( 'pre_get_posts', [ self::class, 'filterSecondaryQueries' ] );
+	}
+
+	/**
+	 * Language-filter *secondary* front-end queries (a block/widget running its
+	 * own WP_Query/get_posts). The main query is handled by filterArchives; this
+	 * catches everything else so posts from other languages can't leak into a
+	 * custom listing.
+	 *
+	 * Deliberately conservative — it only touches "listing" queries for
+	 * translatable post types, and skips:
+	 *   • admin + the main query (filterArchives owns that)
+	 *   • queries opting out with ->set( 'snel_lang', false )
+	 *   • queries targeting specific posts (p / name / post__in / pagename)
+	 *   • post_type 'any' and non-translatable types (attachment, menu items…)
+	 */
+	public static function filterSecondaryQueries( $query ): void {
+		if ( is_admin() || $query->is_main_query() ) {
+			return;
+		}
+		if ( false === $query->get( 'snel_lang', null ) ) {
+			return; // explicit opt-out — this query wants every language
+		}
+		if ( $query->get( 'p' ) || $query->get( 'name' ) || $query->get( 'pagename' ) || $query->get( 'post__in' ) ) {
+			return; // targeting specific posts — don't language-filter
+		}
+
+		$types = (array) ( $query->get( 'post_type' ) ?: 'post' );
+		if ( in_array( 'any', $types, true ) ) {
+			return;
+		}
+		$skip = [ 'attachment', 'nav_menu_item', 'wp_block', 'wp_template', 'wp_template_part', 'revision' ];
+		foreach ( $types as $type ) {
+			if ( in_array( $type, $skip, true ) ) {
+				return;
+			}
+		}
+
+		$lang    = LocaleManager::current();
+		$default = LocaleManager::default();
+
+		$meta = $query->get( 'meta_query' );
+		if ( ! is_array( $meta ) ) {
+			$meta = [];
+		}
+		if ( $lang === $default ) {
+			$meta[] = [
+				'relation' => 'OR',
+				[ 'key' => self::META_LANG, 'value' => $default ],
+				[ 'key' => self::META_LANG, 'compare' => 'NOT EXISTS' ],
+			];
+		} else {
+			$meta[] = [ 'key' => self::META_LANG, 'value' => $lang ];
+		}
+		$query->set( 'meta_query', $meta );
 	}
 }
