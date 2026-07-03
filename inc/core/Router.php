@@ -223,6 +223,20 @@ class Router {
 			return $query_vars;
 		}
 
+		// Posts page (Settings → Reading) in another language: WordPress only
+		// treats the one designated page_for_posts as the blog index. Pin that
+		// real page so the request shows the post loop (filterArchives then
+		// restricts it to $lang) instead of rendering the sibling as a page.
+		$posts_page = (int) get_option( 'page_for_posts' );
+		if (
+			$posts_page && $lang !== LocaleManager::default() &&
+			TranslationGroup::groupOf( $post->ID ) === TranslationGroup::groupOf( $posts_page )
+		) {
+			unset( $query_vars['pagename'], $query_vars['name'], $query_vars['p'], $query_vars['attachment'] );
+			$query_vars['page_id'] = $posts_page;
+			return $query_vars;
+		}
+
 		$target = $post;
 		if ( TranslationGroup::langOf( $post->ID ) !== $lang ) {
 			$sibling_id = TranslationGroup::translation( $post->ID, $lang );
