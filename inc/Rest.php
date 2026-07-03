@@ -49,6 +49,9 @@ class Rest {
 		$this->route( '/cpt-slugs', 'GET',  [ $c, 'cptslugs_get' ],  $perm );
 		$this->route( '/cpt-slugs', 'POST', [ $c, 'cptslugs_save' ], $perm );
 		$this->route( '/cpt-slugs/translate', 'POST', [ $c, 'cptslugs_translate' ], $perm );
+
+		$this->route( '/bulk/plan', 'GET',  [ $c, 'bulk_plan' ], $perm );
+		$this->route( '/bulk/run',  'POST', [ $c, 'bulk_run' ],  $perm );
 	}
 
 	/** Thin register_rest_route wrapper. */

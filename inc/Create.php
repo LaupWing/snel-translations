@@ -264,6 +264,78 @@ class Create {
 	 * Translate a source's title, excerpt and block content into a target lang.
 	 * @return array|\WP_Error ['title'=>…, 'excerpt'=>…, 'content'=>…]
 	 */
+	/**
+	 * Create (if missing) or re-sync (if it exists) one translation of $source_id
+	 * into $target. Reusable by the bulk translator. Uses the translation memory,
+	 * so an unchanged/settings-only source costs no AI. Returns ['ok'=>bool, …].
+	 */
+	public static function translate_one( int $source_id, string $target, bool $publish = false ): array {
+		$source = get_post( $source_id );
+		if ( ! $source ) {
+			return [ 'ok' => false, 'message' => 'Source not found' ];
+		}
+		$default = LocaleManager::default();
+		if ( $target === $default || ! in_array( $target, LocaleManager::supported(), true ) ) {
+			return [ 'ok' => false, 'message' => 'Invalid language' ];
+		}
+
+		$source_lang = TranslationGroup::langOf( $source_id );
+		$existing    = (int) TranslationGroup::translation( $source_id, $target );
+		$memory      = $existing ? self::load_memory( $existing ) : [];
+
+		$tr = self::translate_source_fields( $source, $source_lang, $target, $memory );
+		if ( is_wp_error( $tr ) ) {
+			return [ 'ok' => false, 'message' => $tr->get_error_message() ];
+		}
+
+		if ( $existing ) {
+			$res = wp_update_post( [
+				'ID'           => $existing,
+				'post_title'   => wp_slash( $tr['title'] ),
+				'post_content' => wp_slash( $tr['content'] ),
+				'post_excerpt' => wp_slash( $tr['excerpt'] ),
+			], true );
+			if ( is_wp_error( $res ) ) {
+				return [ 'ok' => false, 'message' => $res->get_error_message() ];
+			}
+			$target_id = $existing;
+		} else {
+			$group      = TranslationGroup::groupOf( $source_id );
+			$new_parent = $source->post_parent;
+			if ( $source->post_parent ) {
+				$parent_sibling = (int) TranslationGroup::translation( $source->post_parent, $target );
+				if ( $parent_sibling ) {
+					$new_parent = $parent_sibling;
+				}
+			}
+			$target_id = wp_insert_post( [
+				'post_type'      => $source->post_type,
+				'post_status'    => $publish ? 'publish' : 'draft',
+				'post_title'     => wp_slash( $tr['title'] ),
+				'post_content'   => wp_slash( $tr['content'] ),
+				'post_excerpt'   => wp_slash( $tr['excerpt'] ),
+				'post_parent'    => $new_parent,
+				'menu_order'     => $source->menu_order,
+				'comment_status' => $source->comment_status,
+				'ping_status'    => $source->ping_status,
+			], true );
+			if ( is_wp_error( $target_id ) ) {
+				return [ 'ok' => false, 'message' => $target_id->get_error_message() ];
+			}
+			TranslationGroup::link( $source_id, $group, $source_lang );
+			TranslationGroup::link( $target_id, $group, $target );
+			self::copy_meta( $source_id, $target_id );
+		}
+
+		self::copy_terms( $source_id, $target_id );
+		$new_memory = $tr['memory'] ?? [];
+		self::translate_meta( $source_id, $target_id, $source_lang, $target, $memory, $new_memory );
+		self::store_memory( $target_id, $new_memory );
+		update_post_meta( $target_id, self::HASH_META, self::source_signature( $source_id ) );
+
+		return [ 'ok' => true, 'post_id' => $target_id, 'created' => ! $existing ];
+	}
+
 	public static function translate_source_fields( \WP_Post $source, string $source_lang, string $target, array $memory = [] ) {
 		$new_memory = [];
 

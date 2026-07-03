@@ -307,6 +307,74 @@ class Controller {
 		return rest_ensure_response( [ 'success' => true ] );
 	}
 
+	// ─── Bulk translate ──────────────────────────────────────────────────────
+
+	/** Work list: every source post × language that is missing or outdated. */
+	public function bulk_plan() {
+		$default = LocaleManager::default();
+		$langs   = array_values( array_diff( LocaleManager::supported(), [ $default ] ) );
+		$cfg     = LocaleManager::config();
+		$types   = (array) apply_filters( 'snel_bulk_post_types', [ 'post', 'page' ] );
+
+		$sources = get_posts( [
+			'post_type'   => $types,
+			'post_status' => [ 'publish', 'draft', 'pending', 'private' ],
+			'numberposts' => -1,
+			'orderby'     => 'title',
+			'order'       => 'ASC',
+			'meta_query'  => [
+				'relation' => 'OR',
+				[ 'key' => TranslationGroup::META_LANG, 'value' => $default ],
+				[ 'key' => TranslationGroup::META_LANG, 'compare' => 'NOT EXISTS' ],
+			],
+		] );
+
+		$items = [];
+		foreach ( $sources as $src ) {
+			$sig = Create::source_signature( $src->ID );
+			foreach ( $langs as $lang ) {
+				$sib    = (int) TranslationGroup::translation( $src->ID, $lang );
+				$action = '';
+				if ( ! $sib ) {
+					$action = 'create';
+				} else {
+					$stored = get_post_meta( $sib, Create::HASH_META, true );
+					if ( $stored !== '' && $stored !== $sig ) {
+						$action = 'sync';
+					}
+				}
+				if ( $action ) {
+					$items[] = [
+						'postId'    => $src->ID,
+						'lang'      => $lang,
+						'langLabel' => $cfg[ $lang ]['label'] ?? strtoupper( $lang ),
+						'action'    => $action,
+						'title'     => get_the_title( $src ) ?: '(no title)',
+					];
+				}
+			}
+		}
+
+		return rest_ensure_response( [ 'items' => $items, 'total' => count( $items ) ] );
+	}
+
+	/** Translate one work item (create or sync). */
+	public function bulk_run( \WP_REST_Request $request ) {
+		$post_id = (int) $request->get_param( 'postId' );
+		$lang    = sanitize_text_field( (string) $request->get_param( 'lang' ) );
+		$publish = (bool) $request->get_param( 'publish' );
+
+		if ( ! $post_id || ! current_user_can( 'edit_post', $post_id ) ) {
+			return new \WP_Error( 'forbidden', 'Unauthorized', [ 'status' => 403 ] );
+		}
+
+		$res = Create::translate_one( $post_id, $lang, $publish );
+		if ( empty( $res['ok'] ) ) {
+			return new \WP_Error( 'translate_failed', $res['message'] ?? 'Translation failed', [ 'status' => 500 ] );
+		}
+		return rest_ensure_response( $res );
+	}
+
 	/** AI-suggest a translated slug for every CPT × language. Does not save. */
 	public function cptslugs_translate() {
 		$default = LocaleManager::default();

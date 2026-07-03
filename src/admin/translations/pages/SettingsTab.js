@@ -4,6 +4,7 @@ import { SelectControl } from '@wordpress/components';
 import TabHeader from '../components/TabHeader';
 import Btn from '../components/Btn';
 import Notice from '../components/Notice';
+import BulkTranslate from './BulkTranslate';
 
 export default function SettingsTab() {
     const data = window.snelTranslations || {};
@@ -162,6 +163,7 @@ export default function SettingsTab() {
                 title={ __( 'Languages', 'snel' ) }
                 description={ __( 'Enable languages and pick the source language.', 'snel' ) }
             >
+                <BulkTranslate />
                 <Btn variant="primary" busy={ busy } disabled={ busy } onClick={ save }>
                     { __( 'Save', 'snel' ) }
                 </Btn>
