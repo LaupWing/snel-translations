@@ -155,25 +155,37 @@ class Router {
 	 */
 	public static function fixFrontPage( array $query_vars ): array {
 		$lang = $query_vars['lang'] ?? '';
+		if ( ! $lang || $lang === LocaleManager::default() ) {
+			return $query_vars;
+		}
 
-		if (
-			$lang &&
-			$lang !== LocaleManager::default() &&
-			empty( $query_vars['pagename'] ) &&
-			empty( $query_vars['page_id'] ) &&
-			empty( $query_vars['p'] ) &&
-			empty( $query_vars['name'] ) &&
-			empty( $query_vars['post_type'] ) &&
-			empty( $query_vars['s'] )
-		) {
-			$front_page_id = (int) get_option( 'page_on_front' );
-			if ( $front_page_id ) {
-				$sibling = TranslationGroup::translation( $front_page_id, $lang );
-				// Only use the sibling if it's actually published — otherwise a
-				// draft/trashed translation would 404 the language home.
-				$use_sibling           = $sibling && get_post_status( $sibling ) === 'publish';
-				$query_vars['page_id'] = $use_sibling ? $sibling : $front_page_id;
+		// Any of these query vars means the URL points at real content (a page,
+		// post, category/tag/taxonomy archive, author, date, search) — NOT the
+		// language home. Bail so we don't hijack it with the front page.
+		$content_vars = [
+			'pagename', 'page_id', 'p', 'name', 'post_type', 's',
+			'category_name', 'cat', 'tag', 'tag_id', 'author', 'author_name',
+			'year', 'monthnum', 'day', 'w', 'm', 'feed',
+		];
+		foreach ( get_taxonomies( [ 'public' => true ], 'objects' ) as $tax ) {
+			if ( ! empty( $tax->query_var ) ) {
+				$content_vars[] = $tax->query_var;
 			}
+			$content_vars[] = $tax->name;
+		}
+		foreach ( $content_vars as $var ) {
+			if ( ! empty( $query_vars[ $var ] ) ) {
+				return $query_vars;
+			}
+		}
+
+		$front_page_id = (int) get_option( 'page_on_front' );
+		if ( $front_page_id ) {
+			$sibling = TranslationGroup::translation( $front_page_id, $lang );
+			// Only use the sibling if it's actually published — otherwise a
+			// draft/trashed translation would 404 the language home.
+			$use_sibling           = $sibling && get_post_status( $sibling ) === 'publish';
+			$query_vars['page_id'] = $use_sibling ? $sibling : $front_page_id;
 		}
 
 		return $query_vars;

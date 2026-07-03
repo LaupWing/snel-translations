@@ -48,7 +48,10 @@ class AdminColumns {
 			.snel-chip { display:inline-flex; align-items:center; justify-content:center; min-width:24px; height:20px; padding:0 6px; border-radius:6px; font-size:10px; font-weight:700; line-height:1; text-decoration:none; }
 			.snel-chip--src { background:#dbeafe; color:#1d4ed8; box-shadow:inset 0 0 0 1px #93c5fd; }
 			.snel-chip--done { background:#dcfce7; color:#15803d; }
+			.snel-chip--draft { background:#fef3c7; color:#b45309; box-shadow:inset 0 0 0 1px #fcd34d; }
 			.snel-chip--miss { background:#f1f5f9; color:#94a3b8; }
+			.snel-chip__dot { width:5px; height:5px; border-radius:50%; margin-right:2px; }
+			.snel-chip--draft .snel-chip__dot { background:#d97706; }
 			a.snel-chip:hover { filter:brightness(.95); }
 			.snel-src { color:#64748b; font-size:12px; text-decoration:none; }
 			.snel-src:hover { text-decoration:underline; }
@@ -95,9 +98,12 @@ class AdminColumns {
 
 		// A translation row: its own chip + a link back to the source.
 		if ( $lang !== $default ) {
+			$is_draft = get_post_status( $post_id ) !== 'publish';
 			printf(
-				'<span class="snel-chip snel-chip--done" title="%s">%s</span>',
-				esc_attr( $label( $lang ) . ' · ' . __( 'translation', 'snel' ) ),
+				'<span class="snel-chip snel-chip--%s" title="%s">%s%s</span>',
+				$is_draft ? 'draft' : 'done',
+				esc_attr( $label( $lang ) . ' · ' . ( $is_draft ? __( 'draft — not live', 'snel' ) : __( 'published', 'snel' ) ) ),
+				$is_draft ? '<span class="snel-chip__dot"></span>' : '',
 				esc_html( strtoupper( $lang ) )
 			);
 			$source_id = (int) snel_get_translation( $post_id, $default );
@@ -125,10 +131,14 @@ class AdminColumns {
 					$up
 				);
 			} elseif ( ! empty( $siblings[ $code ] ) ) {
+				$sib_id   = (int) $siblings[ $code ];
+				$is_draft = get_post_status( $sib_id ) !== 'publish';
 				printf(
-					'<a class="snel-chip snel-chip--done" href="%s" title="%s">%s</a>',
-					esc_url( (string) get_edit_post_link( (int) $siblings[ $code ] ) ),
-					esc_attr( $label( $code ) . ' · ' . __( 'translated — edit', 'snel' ) ),
+					'<a class="snel-chip snel-chip--%s" href="%s" title="%s">%s%s</a>',
+					$is_draft ? 'draft' : 'done',
+					esc_url( (string) get_edit_post_link( $sib_id ) ),
+					esc_attr( $label( $code ) . ' · ' . ( $is_draft ? __( 'draft — not live · edit', 'snel' ) : __( 'published · edit', 'snel' ) ) ),
+					$is_draft ? '<span class="snel-chip__dot"></span>' : '',
 					$up
 				);
 			} else {
