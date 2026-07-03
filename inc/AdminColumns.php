@@ -36,91 +36,110 @@ class AdminColumns {
 		}
 	}
 
-	/** Keep the language columns narrow so the title column gets the space. */
+	/** One narrow Languages column + compact chip styles. */
 	public static function widths(): void {
 		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
 		if ( ! $screen || $screen->base !== 'edit' ) {
 			return;
 		}
 		echo '<style>
-			.column-snel_lang { width: 72px; }
-			.column-snel_langs { width: 220px; }
+			.column-snel_langs { width: 150px; }
+			.snel-chips { display:flex; flex-wrap:wrap; gap:3px; align-items:center; }
+			.snel-chip { display:inline-flex; align-items:center; justify-content:center; min-width:24px; height:20px; padding:0 6px; border-radius:6px; font-size:10px; font-weight:700; line-height:1; text-decoration:none; }
+			.snel-chip--src { background:#dbeafe; color:#1d4ed8; box-shadow:inset 0 0 0 1px #93c5fd; }
+			.snel-chip--done { background:#dcfce7; color:#15803d; }
+			.snel-chip--miss { background:#f1f5f9; color:#94a3b8; }
+			a.snel-chip:hover { filter:brightness(.95); }
+			.snel-src { color:#64748b; font-size:12px; text-decoration:none; }
+			.snel-src:hover { text-decoration:underline; }
 		</style>';
 	}
 
-	/** Insert Language + Languages columns before the Date column. */
+	/**
+	 * Insert one Languages column before Date. On crowded tables (many columns,
+	 * i.e. posts with Author/Categories/Tags/Comments) drop Comments to free up
+	 * width for the title; lean CPTs keep all their columns.
+	 */
 	public static function columns( array $columns ): array {
+		if ( isset( $columns['comments'] ) && count( $columns ) >= 6 ) {
+			unset( $columns['comments'] );
+		}
+
 		$new = [];
 		foreach ( $columns as $key => $label ) {
 			if ( $key === 'date' ) {
-				$new['snel_lang']  = __( 'Language', 'snel' );
 				$new['snel_langs'] = __( 'Languages', 'snel' );
 			}
 			$new[ $key ] = $label;
 		}
-		if ( ! isset( $new['snel_lang'] ) ) {
-			$new['snel_lang']  = __( 'Language', 'snel' );
+		if ( ! isset( $new['snel_langs'] ) ) {
 			$new['snel_langs'] = __( 'Languages', 'snel' );
 		}
 		return $new;
 	}
 
-	/** Render a cell for our columns. */
+	/** Render the Languages cell: compact per-language chips with tooltips. */
 	public static function renderColumn( $column, $post_id ): void {
-		if ( $column === 'snel_lang' ) {
-			$config     = snel_get_languages_config();
-			$lang       = snel_post_lang( $post_id );
-			$label      = $config[ $lang ]['label'] ?? strtoupper( $lang );
-			$is_default = $lang === snel_get_default_lang();
-
-			$style = $is_default
-				? 'background:#e7f0ff;color:#1d4ed8;'
-				: 'background:#eef2f5;color:#475569;';
-
-			echo '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;' . $style . '">'
-				. esc_html( $label ) . ( $is_default ? ' · src' : '' )
-				. '</span>';
+		if ( $column !== 'snel_langs' ) {
 			return;
 		}
 
-		if ( $column === 'snel_langs' ) {
-			$config  = snel_get_languages_config();
-			$default = snel_get_default_lang();
-			$lang    = snel_post_lang( $post_id );
+		$config  = snel_get_languages_config();
+		$default = snel_get_default_lang();
+		$lang    = snel_post_lang( $post_id );
+		$label   = function ( $code ) use ( $config ) {
+			return $config[ $code ]['label'] ?? strtoupper( $code );
+		};
 
-			// Translation rows point back to their source post.
-			if ( $lang !== $default ) {
-				$source_id = (int) snel_get_translation( $post_id, $default );
-				if ( $source_id ) {
-					printf(
-						'<span style="color:#64748b;font-size:12px;">%s <a href="%s">%s</a></span>',
-						esc_html__( 'src:', 'snel' ),
-						esc_url( (string) get_edit_post_link( $source_id ) ),
-						esc_html( get_the_title( $source_id ) )
-					);
-				} else {
-					echo '<span style="color:#cbd5e1;">&mdash;</span>';
-				}
-				return;
+		echo '<div class="snel-chips">';
+
+		// A translation row: its own chip + a link back to the source.
+		if ( $lang !== $default ) {
+			printf(
+				'<span class="snel-chip snel-chip--done" title="%s">%s</span>',
+				esc_attr( $label( $lang ) . ' · ' . __( 'translation', 'snel' ) ),
+				esc_html( strtoupper( $lang ) )
+			);
+			$source_id = (int) snel_get_translation( $post_id, $default );
+			if ( $source_id ) {
+				printf(
+					'<a class="snel-src" href="%s" title="%s">%s</a>',
+					esc_url( (string) get_edit_post_link( $source_id ) ),
+					esc_attr( get_the_title( $source_id ) ),
+					esc_html__( '← source', 'snel' )
+				);
 			}
-
-			// Source rows: every language with a check (exists) / cross (missing).
-			$siblings = snel_get_translations( $post_id );
-			foreach ( snel_get_supported_langs() as $code ) {
-				$label = $config[ $code ]['label'] ?? strtoupper( $code );
-				$has   = ( $code === $default ) || ! empty( $siblings[ $code ] );
-
-				$style = $has
-					? 'background:#e7f6ec;color:#15803d;'
-					: 'background:#f1f5f9;color:#94a3b8;';
-				$icon  = $has ? '&#10003;' : '&#10007;';
-
-				echo '<span style="display:inline-flex;align-items:center;gap:3px;margin:1px 3px 1px 0;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600;' . $style . '">'
-					. $icon . ' ' . esc_html( $label )
-					. '</span>';
-			}
+			echo '</div>';
 			return;
 		}
+
+		// Source row: a chip per language — src / translated (link) / missing.
+		$siblings = snel_get_translations( $post_id );
+		foreach ( snel_get_supported_langs() as $code ) {
+			$up = esc_html( strtoupper( $code ) );
+
+			if ( $code === $default ) {
+				printf(
+					'<span class="snel-chip snel-chip--src" title="%s">%s</span>',
+					esc_attr( $label( $code ) . ' · ' . __( 'source', 'snel' ) ),
+					$up
+				);
+			} elseif ( ! empty( $siblings[ $code ] ) ) {
+				printf(
+					'<a class="snel-chip snel-chip--done" href="%s" title="%s">%s</a>',
+					esc_url( (string) get_edit_post_link( (int) $siblings[ $code ] ) ),
+					esc_attr( $label( $code ) . ' · ' . __( 'translated — edit', 'snel' ) ),
+					$up
+				);
+			} else {
+				printf(
+					'<span class="snel-chip snel-chip--miss" title="%s">%s</span>',
+					esc_attr( $label( $code ) . ' · ' . __( 'not translated', 'snel' ) ),
+					$up
+				);
+			}
+		}
+		echo '</div>';
 	}
 
 	/** The language filter dropdown above the list. */

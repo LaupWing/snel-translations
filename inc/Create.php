@@ -179,6 +179,7 @@ class Create {
 		TranslationGroup::link( $new_id, $group, $target );
 
 		self::copy_meta( $source_id, $new_id );
+		self::copy_terms( $source_id, $new_id );
 		self::translate_meta( $source_id, $new_id, $source_lang, $target );
 
 		update_post_meta( $new_id, self::HASH_META, self::source_signature( $source_id ) );
@@ -237,6 +238,7 @@ class Create {
 			wp_send_json_error( [ 'message' => $updated->get_error_message() ] );
 		}
 
+		self::copy_terms( $source_id, $target_id );
 		self::translate_meta( $source_id, $target_id, $source_lang, $target );
 		update_post_meta( $target_id, self::HASH_META, self::source_signature( $source_id ) );
 
@@ -329,6 +331,24 @@ class Create {
 		}
 	}
 
+	/**
+	 * Copy taxonomy term assignments (categories, tags, custom taxes) from the
+	 * source to its translation. Terms are shared across languages — the label
+	 * translates on the front end — so the sibling gets the same term IDs.
+	 */
+	public static function copy_terms( int $from, int $to ): void {
+		$post = get_post( $from );
+		if ( ! $post ) {
+			return;
+		}
+		foreach ( get_object_taxonomies( $post->post_type ) as $tax ) {
+			$ids = wp_get_object_terms( $from, $tax, [ 'fields' => 'ids' ] );
+			if ( ! is_wp_error( $ids ) ) {
+				wp_set_object_terms( $to, $ids, $tax );
+			}
+		}
+	}
+
 	/** AI-translate declared text meta keys onto a translation, in place. */
 	public static function translate_meta( int $from, int $to, string $source, string $target ): void {
 		$keys = self::translatable_meta_keys( get_post_type( $from ) );
@@ -353,7 +373,7 @@ class Create {
 		}
 
 		$i = 0;
-		foreach ( $values as $key => $original ) {
+		foreach ( array_keys( $values ) as $key ) {
 			if ( isset( $translated[ $i ] ) ) {
 				update_post_meta( $to, $key, wp_slash( $translated[ $i ] ) );
 			}
