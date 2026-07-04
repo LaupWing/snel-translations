@@ -21,6 +21,35 @@ class LocaleManager {
 	/** Cached languages config array. */
 	private static ?array $config = null;
 
+	/**
+	 * Register the locale switch. Called from Boot once, when live.
+	 *
+	 * Makes get_locale() — and everything built on it: language_attributes(),
+	 * date_i18n(), core/plugin textdomains — follow the request's language, so
+	 * /en/ pages render <html lang="en-US"> with English dates and core strings.
+	 * Non-default languages other than English need their WP language pack
+	 * installed (Settings → General → Site Language downloads it).
+	 */
+	public static function register(): void {
+		add_filter( 'locale', [ self::class, 'filterLocale' ] );
+	}
+
+	/**
+	 * Swap the front-end locale to the current language's configured one.
+	 * Applies to the default language too, so the front end is consistent even
+	 * when wp-admin's Site Language is set to something else. Admin stays as-is.
+	 */
+	public static function filterLocale( $locale ) {
+		if ( is_admin() ) {
+			return $locale;
+		}
+
+		$config = self::config();
+		$lang   = self::current();
+
+		return ! empty( $config[ $lang ]['locale'] ) ? $config[ $lang ]['locale'] : $locale;
+	}
+
 	/** Forced language (e.g. for REST rendering); null = detect normally. */
 	private static ?string $override = null;
 
@@ -106,9 +135,13 @@ class LocaleManager {
 			return self::$override;
 		}
 
-		$lang = get_query_var( 'lang', '' );
-		if ( $lang && in_array( $lang, self::supported(), true ) ) {
-			return $lang;
+		// The locale filter can run before the main query exists — get_query_var
+		// would fatal on a null $wp_query, so only ask once it's there.
+		if ( ( $GLOBALS['wp_query'] ?? null ) instanceof \WP_Query ) {
+			$lang = get_query_var( 'lang', '' );
+			if ( $lang && in_array( $lang, self::supported(), true ) ) {
+				return $lang;
+			}
 		}
 
 		$path          = trim( wp_parse_url( $_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH ), '/' );

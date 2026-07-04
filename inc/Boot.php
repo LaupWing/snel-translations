@@ -52,6 +52,7 @@ class Boot {
 		require_once SNEL_TR_DIR . 'inc/AdminColumns.php';
 
 		// ── Register the runtime ─────────────────────────────────────────────
+		Core\LocaleManager::register();     // front-end locale follows the URL language
 		Core\Router::register();            // rewrite rules + resolve request → sibling
 		Core\TranslationGroup::register();  // permalink prefix + archive filter + save
 		Core\TermTranslation::register();   // translated term labels (front end)
