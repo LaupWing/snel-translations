@@ -81,26 +81,46 @@ class UrlGenerator {
 		return home_url( '/' . $full );
 	}
 
-	/** Swap the language prefix on the current request URI (non-singular pages). */
+	/**
+	 * Swap the language prefix on the current request URI (non-singular pages).
+	 * Also swaps a translated CPT archive segment, so /en/ai-services/ ↔
+	 * /ai-diensten/ — the prefix alone isn't the whole difference.
+	 */
 	private static function swapPrefix( string $target_lang ): string {
-		$default     = LocaleManager::default();
-		$langs       = LocaleManager::supported();
-		$current_url = $_SERVER['REQUEST_URI'] ?? '/';
+		$default = LocaleManager::default();
+		$langs   = LocaleManager::supported();
+		$current = LocaleManager::current();
+
+		$request = $_SERVER['REQUEST_URI'] ?? '/';
+		$path    = (string) wp_parse_url( $request, PHP_URL_PATH );
+		$query   = (string) wp_parse_url( $request, PHP_URL_QUERY );
 
 		$non_default = array_diff( $langs, [ $default ] );
 		if ( ! empty( $non_default ) ) {
-			$pattern     = '#^/(' . implode( '|', $non_default ) . ')(/|$)#';
-			$current_url = preg_replace( $pattern, '/', $current_url );
+			$pattern = '#^/(' . implode( '|', $non_default ) . ')(/|$)#';
+			$path    = preg_replace( $pattern, '/', $path );
 		}
-		if ( empty( $current_url ) ) {
-			$current_url = '/';
-		}
-
-		if ( $target_lang === $default ) {
-			return home_url( $current_url );
+		if ( empty( $path ) ) {
+			$path = '/';
 		}
 
-		return home_url( '/' . $target_lang . $current_url );
+		// Translate the leading CPT archive segment from the current language's
+		// slug to the target language's.
+		$segs = explode( '/', trim( $path, '/' ) );
+		if ( ! empty( $segs[0] ) ) {
+			foreach ( self::cptSlugsConfig() as $default_slug => $translations ) {
+				$current_slug = ( $current === $default ) ? $default_slug : ( $translations[ $current ] ?? $default_slug );
+				if ( $segs[0] === $current_slug ) {
+					$segs[0] = ( $target_lang === $default ) ? $default_slug : ( $translations[ $target_lang ] ?? $default_slug );
+					$path    = '/' . implode( '/', $segs ) . ( substr( $path, -1 ) === '/' ? '/' : '' );
+					break;
+				}
+			}
+		}
+
+		$url = ( $target_lang === $default ) ? home_url( $path ) : home_url( '/' . $target_lang . $path );
+
+		return $url . ( $query !== '' ? '?' . $query : '' );
 	}
 
 	/**
