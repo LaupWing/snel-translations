@@ -29,6 +29,7 @@ class Router {
 		add_filter( 'option_page_for_posts', [ self::class, 'filterPostsPageId' ] );
 		add_filter( 'option_page_on_front', [ self::class, 'filterFrontPageId' ] );
 		add_filter( 'redirect_canonical', [ self::class, 'fixCanonicalRedirect' ], 10, 2 );
+		add_action( 'template_redirect', [ self::class, 'canonicalizeSwappedSlug' ], 9 ); // before redirect_canonical (10)
 
 		// Force one flush after deploy if the rules are stale.
 		$rules_version = 'snel_rewrite_v7';
@@ -288,9 +289,47 @@ class Router {
 			if ( ! $target instanceof \WP_Post || $target->post_status !== 'publish' ) {
 				return $query_vars;
 			}
+			// The URL carried the *other* language's slug — remember the swap so
+			// canonicalizeSwappedSlug can 301 to the real URL (core can't: only
+			// the plugin knows the two slugs are siblings).
+			self::$swappedTarget = $target->ID;
 		}
 
 		return self::pinPost( $query_vars, $target );
+	}
+
+	/** Post id pinned in place of the slug the URL actually carried. */
+	private static ?int $swappedTarget = null;
+
+	/**
+	 * 301 a sibling-swapped URL to the pinned post's own permalink, e.g.
+	 * /en/{nl-slug}/ → /en/{en-slug}/ (and {en-slug} at the root → {nl-slug}).
+	 * Runs just before redirect_canonical. Skips previews, feeds, embeds and
+	 * paginated requests — those must keep the URL they were asked on.
+	 */
+	public static function canonicalizeSwappedSlug(): void {
+		if ( ! self::$swappedTarget || is_preview() || is_feed() || is_embed() ) {
+			return;
+		}
+		if ( get_query_var( 'paged' ) || get_query_var( 'page' ) || get_query_var( 'cpage' ) ) {
+			return;
+		}
+
+		$canonical = get_permalink( self::$swappedTarget );
+		if ( ! $canonical ) {
+			return;
+		}
+
+		$request  = $_SERVER['REQUEST_URI'] ?? '/';
+		$req_path = (string) wp_parse_url( $request, PHP_URL_PATH );
+		$can_path = (string) wp_parse_url( $canonical, PHP_URL_PATH );
+		if ( untrailingslashit( $req_path ) === untrailingslashit( $can_path ) ) {
+			return; // same URL apart from the slash — redirect_canonical's job
+		}
+
+		$query = (string) wp_parse_url( $request, PHP_URL_QUERY );
+		wp_safe_redirect( $canonical . ( $query !== '' ? '?' . $query : '' ), 301 );
+		exit;
 	}
 
 	/** Replace slug-based query vars with a concrete post id. */
