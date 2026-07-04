@@ -180,14 +180,21 @@ class TranslationGroup {
 
 		$default = LocaleManager::default();
 		$lang    = self::langOf( $post->ID );
-		if ( $lang === $default ) {
-			return $url;
+
+		// The static front page lives at the site root, its siblings at the
+		// language roots (/en/), never at /{slug}/. Checked via the group because
+		// the page_on_front option is filtered to the current language's sibling —
+		// WP core then no longer recognises the other siblings as the front page.
+		$in_front_group = false;
+		if ( $post->post_type === 'page' && 'page' === get_option( 'show_on_front' ) ) {
+			$front_id       = (int) get_option( 'page_on_front' );
+			$in_front_group = $front_id && self::groupOf( $post->ID ) === self::groupOf( $front_id );
 		}
 
-		// The static front page lives at the site root. Its translation should
-		// live at the language root (/en/), not /en/{slug}/.
-		$front_id = (int) get_option( 'page_on_front' );
-		if ( $front_id && self::groupOf( $post->ID ) === self::groupOf( $front_id ) ) {
+		if ( $lang === $default ) {
+			return $in_front_group ? home_url( '/' ) : $url;
+		}
+		if ( $in_front_group ) {
 			return home_url( '/' . $lang . '/' );
 		}
 

@@ -20,7 +20,7 @@ places. This document is that contract.
 5. **Be careful with custom queries** (see [Cautions](#cautions)).
 
 Everything else — routing, front/blog page per language, categories, permalinks,
-the admin UI — the plugin handles.
+hreflang alternate tags, the admin UI — the plugin handles.
 
 ---
 
