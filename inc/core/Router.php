@@ -28,7 +28,7 @@ class Router {
 		add_filter( 'request', [ self::class, 'resolveLanguagePost' ], 20 );
 		add_filter( 'option_page_for_posts', [ self::class, 'filterPostsPageId' ] );
 		add_filter( 'option_page_on_front', [ self::class, 'filterFrontPageId' ] );
-		add_filter( 'redirect_canonical', [ self::class, 'preventCanonicalRedirect' ], 10, 2 );
+		add_filter( 'redirect_canonical', [ self::class, 'fixCanonicalRedirect' ], 10, 2 );
 
 		// Force one flush after deploy if the rules are stale.
 		$rules_version = 'snel_rewrite_v7';
@@ -313,14 +313,52 @@ class Router {
 		return $query_vars;
 	}
 
-	/** Stop WP redirecting a translated URL to the default-language canonical. */
-	public static function preventCanonicalRedirect( $redirect_url, $requested_url ) {
+	/**
+	 * Keep canonical redirects language-aware. WP's redirect_canonical still
+	 * runs (trailing slash, host/scheme normalisation, wrong-slug fixes) but its
+	 * target is computed from default-language state, so on a translated URL it
+	 * can strip the /en/ prefix. Re-apply the prefix instead of disabling the
+	 * whole mechanism; cancel only when the "fixed" URL is the requested one.
+	 */
+	public static function fixCanonicalRedirect( $redirect_url, $requested_url ) {
 		$lang = get_query_var( 'lang', '' );
 
-		if ( $lang && $lang !== LocaleManager::default() ) {
+		if ( ! $redirect_url || ! $lang || $lang === LocaleManager::default() ) {
+			return $redirect_url;
+		}
+
+		$parts     = wp_parse_url( $redirect_url );
+		$home_path = rtrim( (string) wp_parse_url( home_url( '/' ), PHP_URL_PATH ), '/' );
+
+		$rel = $parts['path'] ?? '/';
+		if ( $home_path !== '' && strpos( $rel, $home_path ) === 0 ) {
+			$rel = substr( $rel, strlen( $home_path ) );
+		}
+
+		// Already carries the prefix (permalink filters got it right) — trust it.
+		$segs = explode( '/', trim( $rel, '/' ) );
+		if ( ! empty( $segs[0] ) && $segs[0] === $lang ) {
+			return $redirect_url;
+		}
+
+		// Re-apply the stripped prefix.
+		$rel      = trim( $rel, '/' );
+		$new_path = $home_path . '/' . $lang . '/' . ( $rel !== '' ? $rel . '/' : '' );
+
+		$rebuilt = '';
+		if ( isset( $parts['scheme'], $parts['host'] ) ) {
+			$rebuilt = $parts['scheme'] . '://' . $parts['host'] . ( isset( $parts['port'] ) ? ':' . $parts['port'] : '' );
+		}
+		$rebuilt .= $new_path;
+		if ( ! empty( $parts['query'] ) ) {
+			$rebuilt .= '?' . $parts['query'];
+		}
+
+		// Redirecting to the URL we're already on would loop — don't.
+		if ( $rebuilt === (string) $requested_url ) {
 			return false;
 		}
 
-		return $redirect_url;
+		return $rebuilt;
 	}
 }
