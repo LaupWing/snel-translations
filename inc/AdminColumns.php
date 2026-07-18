@@ -152,6 +152,22 @@ class AdminColumns {
 		echo '</div>';
 	}
 
+	/**
+	 * The language the list defaults to when no filter is chosen: the source
+	 * language on the main list (keeps it clean — translations show as chips on
+	 * the source row), but "all" on status views like Trash or Drafts, so
+	 * trashed/other-language posts aren't hidden behind a manual filter step.
+	 */
+	private static function defaultFilter(): string {
+		$status = isset( $_GET['post_status'] )
+			? sanitize_key( wp_unslash( $_GET['post_status'] ) )
+			: '';
+		if ( $status !== '' && $status !== 'all' ) {
+			return 'all';
+		}
+		return snel_get_default_lang();
+	}
+
 	/** The language filter dropdown above the list. */
 	public static function filterDropdown(): void {
 		global $typenow;
@@ -163,7 +179,7 @@ class AdminColumns {
 		$default = snel_get_default_lang();
 		$current = isset( $_GET['snel_lang_filter'] )
 			? sanitize_text_field( wp_unslash( $_GET['snel_lang_filter'] ) )
-			: $default;
+			: self::defaultFilter();
 
 		echo '<select name="snel_lang_filter">';
 		echo '<option value="all"' . selected( $current, 'all', false ) . '>' . esc_html__( 'All languages', 'snel' ) . '</option>';
@@ -195,7 +211,8 @@ class AdminColumns {
 		$default = snel_get_default_lang();
 		$lang    = isset( $_GET['snel_lang_filter'] )
 			? sanitize_text_field( wp_unslash( $_GET['snel_lang_filter'] ) )
-			: $default;
+			: self::defaultFilter();
+		// 'all' (or anything not a real language) → no filter, show every language.
 		if ( ! $lang || ! in_array( $lang, snel_get_supported_langs(), true ) ) {
 			return;
 		}

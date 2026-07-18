@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Snel Translations
  * Description:       Lightweight multilingual for WordPress — one post per language, no page bloat.
- * Version:           0.4.0
+ * Version:           0.4.1
  * Author:            Snelstack
  * License:           GPL-2.0-or-later
  * Text Domain:       snel
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-define( 'SNEL_TR_VERSION', '0.4.0' );
+define( 'SNEL_TR_VERSION', '0.4.1' );
 define( 'SNEL_TR_FILE', __FILE__ );
 define( 'SNEL_TR_DIR', plugin_dir_path( __FILE__ ) );  // .../plugins/snel-translations/
 define( 'SNEL_TR_URL', plugin_dir_url( __FILE__ ) );   // https://site/.../snel-translations/
