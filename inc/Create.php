@@ -32,6 +32,38 @@ class Create {
 	/** Meta key: translation memory { source text => translated text } for reuse. */
 	const TM_META = '_snel_tm';
 
+	// ─── Concurrency guard ────────────────────────────────────────────────────
+	//
+	// Creating a translation is check-then-insert with a slow AI call in the
+	// middle. Two concurrent requests for the same group+language (a double
+	// "translate all", an impatient double-click) can both pass the "does it
+	// exist?" check and each insert a post → duplicates. A non-blocking MySQL
+	// GET_LOCK keyed on group+language lets the first request win; the second
+	// bails instead of inserting. Auto-releases when the request's DB
+	// connection closes, so a crash can't leave it stuck.
+
+	private static function lockName( int $group, string $target ): string {
+		return 'snel_tr_' . $group . '_' . $target;
+	}
+
+	/** Try to claim the create-lock for a group+language. False = someone else holds it. */
+	private static function lock( int $group, string $target ): bool {
+		global $wpdb;
+		return (bool) $wpdb->get_var( $wpdb->prepare(
+			'SELECT GET_LOCK(%s, 0)',
+			self::lockName( $group, $target )
+		) );
+	}
+
+	/** Release the create-lock for a group+language. */
+	private static function unlock( int $group, string $target ): void {
+		global $wpdb;
+		$wpdb->query( $wpdb->prepare(
+			'SELECT RELEASE_LOCK(%s)',
+			self::lockName( $group, $target )
+		) );
+	}
+
 	/** Register AJAX handlers + editor data. Called from Boot when live. */
 	public static function register(): void {
 		add_action( 'wp_ajax_snel_create_translation', [ self::class, 'ajax_create' ] );
@@ -142,8 +174,15 @@ class Create {
 		$source_lang = TranslationGroup::langOf( $source_id );
 		$group       = TranslationGroup::groupOf( $source_id );
 
+		// Claim the create-lock before the existence check so a concurrent
+		// request can't slip a second insert past it (see Concurrency guard).
+		if ( ! self::lock( $group, $target ) ) {
+			wp_send_json_error( [ 'message' => 'A translation for this language is already being created — please wait a moment.' ] );
+		}
+
 		$existing = TranslationGroup::translation( $source_id, $target );
 		if ( $existing ) {
+			self::unlock( $group, $target );
 			wp_send_json_success( [ 'edit_url' => get_edit_post_link( $existing, 'raw' ), 'post_id' => $existing, 'existed' => true ] );
 		}
 
@@ -189,6 +228,8 @@ class Create {
 		self::store_memory( $new_id, $memory );
 
 		update_post_meta( $new_id, self::HASH_META, self::source_signature( $source_id ) );
+
+		self::unlock( $group, $target );
 
 		wp_send_json_success( [
 			'edit_url' => get_edit_post_link( $new_id, 'raw' ),
@@ -279,6 +320,22 @@ class Create {
 			return [ 'ok' => false, 'message' => 'Invalid language' ];
 		}
 
+		// Claim the create-lock so two concurrent bulk runs can't each insert
+		// the same translation (see Concurrency guard in the constants above).
+		$lock_group = TranslationGroup::groupOf( $source_id );
+		if ( ! self::lock( $lock_group, $target ) ) {
+			return [ 'ok' => false, 'message' => 'Translation already in progress', 'code' => 'locked' ];
+		}
+
+		try {
+			return self::translate_one_locked( $source, $source_id, $target, $publish );
+		} finally {
+			self::unlock( $lock_group, $target );
+		}
+	}
+
+	/** Body of translate_one, run while holding the group+language create-lock. */
+	private static function translate_one_locked( \WP_Post $source, int $source_id, string $target, bool $publish ): array {
 		$source_lang = TranslationGroup::langOf( $source_id );
 		$existing    = (int) TranslationGroup::translation( $source_id, $target );
 		$memory      = $existing ? self::load_memory( $existing ) : [];

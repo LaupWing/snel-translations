@@ -30,6 +30,9 @@ class TranslationGroup {
 	/** Per-request cache: group id => [lang => post_id]. */
 	private static array $cache = [];
 
+	/** Re-entrancy guard while cascading a group delete/trash. */
+	private static bool $cascading = false;
+
 	/** The language a post is written in (falls back to default). */
 	public static function langOf( int $post_id ): string {
 		$lang = get_post_meta( $post_id, self::META_LANG, true );
@@ -328,9 +331,143 @@ class TranslationGroup {
 		return (int) $count > 0;
 	}
 
+	/**
+	 * Cascade a delete/trash of a group's ROOT (the source) to its siblings.
+	 * Only the source takes its group down — deleting a single non-root
+	 * translation removes just itself, so stray duplicates stay individually
+	 * removable. $mode is 'trash' (soft) or 'delete' (permanent).
+	 */
+	private static function cascade( int $post_id, string $mode ): void {
+		if ( self::$cascading ) {
+			return; // already inside a cascade — don't recurse on the siblings
+		}
+		if ( self::groupOf( $post_id ) !== $post_id ) {
+			return; // not the group root (source) — leave the rest of the group alone
+		}
+
+		global $wpdb;
+		$members = $wpdb->get_col( $wpdb->prepare(
+			"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value = %d",
+			self::META_GROUP,
+			$post_id
+		) );
+
+		self::$cascading = true;
+		foreach ( $members as $mid ) {
+			$mid = (int) $mid;
+			if ( $mid === $post_id ) {
+				continue; // the post being deleted — WP handles it
+			}
+			if ( $mode === 'delete' ) {
+				wp_delete_post( $mid, true );
+			} else {
+				wp_trash_post( $mid );
+			}
+		}
+		self::$cascading = false;
+
+		unset( self::$cache[ $post_id ] );
+	}
+
+	/**
+	 * How many translation siblings a group ROOT has. 0 if the post isn't a
+	 * source (group root) or has no translations — i.e. nothing would cascade.
+	 */
+	public static function siblingCount( int $post_id ): int {
+		if ( self::groupOf( $post_id ) !== $post_id ) {
+			return 0; // not the source — trashing it only removes itself
+		}
+		global $wpdb;
+		return (int) $wpdb->get_var( $wpdb->prepare(
+			"SELECT COUNT(*) FROM {$wpdb->postmeta}
+			 WHERE meta_key = %s AND meta_value = %d AND post_id <> %d",
+			self::META_GROUP,
+			$post_id,
+			$post_id
+		) );
+	}
+
+	/** The confirm() warning shown before a source (and its translations) is trashed. */
+	private static function cascadeWarning( int $count ): string {
+		return sprintf(
+			/* translators: %d: number of translations that will also be trashed */
+			_n(
+				'This is a source post with %d translation. Moving it to trash will also trash that translation. Continue?',
+				'This is a source post with %d translations. Moving it to trash will also trash all of them. Continue?',
+				$count
+			),
+			$count
+		);
+	}
+
+	/**
+	 * Add a JS confirm() to the "Trash" row action for source posts that have
+	 * translations, so trashing a source can't silently take its group with it.
+	 */
+	public static function confirmTrashRowAction( array $actions, $post ): array {
+		if ( empty( $actions['trash'] ) || ! $post instanceof \WP_Post ) {
+			return $actions;
+		}
+		$count = self::siblingCount( $post->ID );
+		if ( $count < 1 ) {
+			return $actions;
+		}
+		$msg              = esc_js( self::cascadeWarning( $count ) );
+		$actions['trash'] = preg_replace(
+			'/<a\b/',
+			'<a onclick="return confirm(\'' . $msg . '\')"',
+			$actions['trash'],
+			1
+		);
+		return $actions;
+	}
+
+	/**
+	 * Best-effort confirm() in the block editor's "Move to trash" button for a
+	 * source post with translations (the list-table path is handled server-side
+	 * by confirmTrashRowAction).
+	 */
+	public static function confirmTrashEditor(): void {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen || $screen->base !== 'post' ) {
+			return;
+		}
+		$post = get_post();
+		if ( ! $post ) {
+			return;
+		}
+		$count = self::siblingCount( $post->ID );
+		if ( $count < 1 ) {
+			return;
+		}
+		$msg = esc_js( self::cascadeWarning( $count ) );
+		$js  = "(function(){document.addEventListener('click',function(e){"
+			. "var b=e.target.closest('.editor-post-trash');"
+			. "if(b&&!window.__snelTrashConfirmed){"
+			. "if(window.confirm('{$msg}')){window.__snelTrashConfirmed=true;}"
+			. "else{e.preventDefault();e.stopImmediatePropagation();}"
+			. "}},true);})();";
+		wp_add_inline_script( 'wp-edit-post', $js );
+	}
+
+	/** Trash a source → trash every translation with it. */
+	public static function cascadeTrash( int $post_id ): void {
+		self::cascade( $post_id, 'trash' );
+	}
+
+	/** Permanently delete a source → permanently delete every translation. */
+	public static function cascadeDelete( int $post_id ): void {
+		self::cascade( $post_id, 'delete' );
+	}
+
 	/** Register the front-end + save hooks. Called from Boot once, when live. */
 	public static function register(): void {
 		add_action( 'save_post', [ self::class, 'ensureDefaults' ], 5, 2 );
+		add_action( 'wp_trash_post', [ self::class, 'cascadeTrash' ] );
+		add_action( 'before_delete_post', [ self::class, 'cascadeDelete' ] );
+		add_filter( 'post_row_actions', [ self::class, 'confirmTrashRowAction' ], 10, 2 );
+		add_filter( 'page_row_actions', [ self::class, 'confirmTrashRowAction' ], 10, 2 );
+		add_action( 'enqueue_block_editor_assets', [ self::class, 'confirmTrashEditor' ] );
 		add_filter( 'wp_unique_post_slug', [ self::class, 'uniqueSlug' ], 10, 6 );
 
 		add_filter( 'post_link', [ self::class, 'filterPermalink' ], 10, 2 );
