@@ -209,6 +209,26 @@ function yourtheme_get_services( array $args = [] ) {
 }
 ```
 
+### ⚠️ `get_page_by_path()` — the plugin cannot reach it
+
+Core exposes **no filter** on `get_page_by_path()`; it's a raw `$wpdb` query. The
+plugin has nothing to hook, so it always returns the **default-language** post no
+matter what language the visitor is on. Same for hand-written `$wpdb` lookups.
+
+This bites hardest on CPT archive templates that pull their block content from a
+page:
+
+```php
+// ❌ renders Dutch content on /de/ and /en/
+$page = get_page_by_path( 'cases' );
+
+// ✅ resolves the slug, then swaps in the current language's version
+$page = snel_page( 'cases' );
+```
+
+Rule of thumb: **if it isn't a `WP_Query`, the plugin probably can't language-scope
+it.** Stick to `WP_Query` / `get_posts` and the plugin handles the rest.
+
 ### ⚠️ Front page & blog (posts) page
 
 WordPress only knows **one** front page and **one** posts page (Settings →
@@ -258,11 +278,12 @@ categories only.
 |---|---|
 | `snel__( $text )` | The string in the current language (or `$text` if untranslated) |
 | `snel_url( $url )` | An internal URL prefixed for the current language |
-| `snel_lang_url( $lang )` | The current page's URL in `$lang` (sibling, or that lang's home) |
+| `snel_lang_url( $lang )` | The current page's URL in `$lang` (the sibling's permalink, or the same path with the prefix swapped) |
 | `snel_get_lang()` | Current language code |
 | `snel_get_default_lang()` | Default (source) language code |
 | `snel_get_supported_langs()` | Enabled language codes, e.g. `['nl','en']` |
 | `snel_get_languages_config()` | Full language config keyed by code |
+| `snel_page( $slug, $post_type = 'page' )` | Post matching the default-language `$slug`, resolved to the current language. Use instead of `get_page_by_path()` |
 | `snel_get_translation( $id, $lang )` | Sibling post ID in `$lang`, or `0` |
 | `snel_get_translations( $id )` | `[ lang => post_id ]` for all siblings |
 | `snel_post_lang( $id )` | A post's language code |

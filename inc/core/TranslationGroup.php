@@ -243,6 +243,31 @@ class TranslationGroup {
 	}
 
 	/**
+	 * Language-prefix a CPT archive link, translating the archive segment too, so
+	 * get_post_type_archive_link( 'case' ) yields /de/fallstudien/ rather than
+	 * /cases/. Mirrors the archive rewrite rules in Router::registerRewriteRules.
+	 */
+	public static function filterArchiveLink( $url, $post_type ) {
+		$lang    = LocaleManager::current();
+		$default = LocaleManager::default();
+
+		$object = get_post_type_object( $post_type );
+		if ( ! $object ) {
+			return $url;
+		}
+
+		$slug = ( is_array( $object->rewrite ) && ! empty( $object->rewrite['slug'] ) )
+			? $object->rewrite['slug']
+			: $object->name;
+
+		$translations = UrlGenerator::cptSlugsConfig()[ $slug ] ?? [];
+		$target_slug  = ( $lang === $default ) ? $slug : ( $translations[ $lang ] ?? $slug );
+		$prefix       = ( $lang === $default ) ? '' : $lang . '/';
+
+		return home_url( '/' . $prefix . $target_slug . '/' );
+	}
+
+	/**
 	 * Constrain listings (blog, archives, search) to the current language.
 	 * Default-language posts may lack _snel_lang, so for default we also match
 	 * posts where the meta is absent.
@@ -473,6 +498,7 @@ class TranslationGroup {
 		add_filter( 'post_link', [ self::class, 'filterPermalink' ], 10, 2 );
 		add_filter( 'page_link', [ self::class, 'filterPermalink' ], 10, 2 );
 		add_filter( 'post_type_link', [ self::class, 'filterPermalink' ], 10, 2 );
+		add_filter( 'post_type_archive_link', [ self::class, 'filterArchiveLink' ], 10, 2 );
 
 		add_action( 'pre_get_posts', [ self::class, 'filterArchives' ] );
 		add_action( 'pre_get_posts', [ self::class, 'filterSecondaryQueries' ] );

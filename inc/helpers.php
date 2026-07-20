@@ -119,6 +119,26 @@ if ( ! function_exists( 'snel_get_translation' ) ) {
 	}
 }
 
+/**
+ * Look up a post by its default-language slug and return the current language's
+ * version of it. Use this instead of get_page_by_path(), which core exposes no
+ * filter for — the plugin cannot language-scope it, so a raw call always renders
+ * default-language content. Falls back to the default-language post when no
+ * translation exists.
+ */
+if ( ! function_exists( 'snel_page' ) ) {
+	function snel_page( $slug, $post_type = 'page' ) {
+		$post = get_page_by_path( $slug, OBJECT, $post_type );
+		if ( ! $post ) {
+			return null;
+		}
+
+		$sibling_id = TranslationGroup::translation( $post->ID, LocaleManager::current() );
+
+		return $sibling_id ? get_post( $sibling_id ) : $post;
+	}
+}
+
 if ( ! function_exists( 'snel_get_translations' ) ) {
 	function snel_get_translations( $post_id = null ) {
 		$post_id = $post_id ?: get_the_ID();

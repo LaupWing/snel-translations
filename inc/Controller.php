@@ -314,7 +314,12 @@ class Controller {
 		$default = LocaleManager::default();
 		$langs   = array_values( array_diff( LocaleManager::supported(), [ $default ] ) );
 		$cfg     = LocaleManager::config();
-		$types   = (array) apply_filters( 'snel_bulk_post_types', [ 'post', 'page' ] );
+		// Every public type, so custom post types (cases, services…) are covered
+		// without per-theme wiring. Filter to narrow it, e.g. to exclude a CPT
+		// that is deliberately shared across languages.
+		$public = get_post_types( [ 'public' => true ], 'names' );
+		unset( $public['attachment'] ); // media isn't translated content
+		$types = (array) apply_filters( 'snel_bulk_post_types', array_values( $public ) );
 
 		$sources = get_posts( [
 			'post_type'   => $types,

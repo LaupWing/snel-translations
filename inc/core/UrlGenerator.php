@@ -46,8 +46,8 @@ class UrlGenerator {
 	/**
 	 * URL for the current page in another language.
 	 *
-	 * Singular: link to the sibling translation's permalink (or that language's
-	 * home if none exists). Otherwise: swap the prefix on the current URL.
+	 * Singular: link to the sibling translation's permalink. With no sibling —
+	 * and for everything else — swap the prefix on the current URL.
 	 */
 	public static function langUrl( string $target_lang ): string {
 		if ( is_singular() || is_page() ) {
@@ -57,7 +57,9 @@ class UrlGenerator {
 				if ( $sibling_id ) {
 					return self::prefixedPermalink( $sibling_id, $target_lang );
 				}
-				return self::homeUrl( $target_lang );
+				// No sibling: keep the path and just swap the prefix. Router::
+				// resolveLanguagePost renders the untranslated post there rather
+				// than 404ing, so this matches what direct URL entry already does.
 			}
 		}
 
