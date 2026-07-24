@@ -50,7 +50,6 @@ class Boot {
 		require_once SNEL_TR_DIR . 'inc/Nav.php';
 		require_once SNEL_TR_DIR . 'inc/Admin.php';
 		require_once SNEL_TR_DIR . 'inc/AdminColumns.php';
-		require_once SNEL_TR_DIR . 'inc/SlugCleanup.php';   // TEMPORARY — remove once prod slugs are clean
 
 		// ── Register the runtime ─────────────────────────────────────────────
 		Core\LocaleManager::register();     // front-end locale follows the URL language
@@ -62,7 +61,6 @@ class Boot {
 		Ai::register();                     // snel_translate AJAX
 		Create::register();                 // create/sync/state AJAX + editor data
 		AdminColumns::register();           // list-table language columns + filter
-		SlugCleanup::register();            // TEMPORARY — Tools → Snel slug cleanup
 
 		new Rest();                         // REST endpoints (snel-translations/v1)
 		( new Admin() )->register();        // admin menu page + asset enqueue
