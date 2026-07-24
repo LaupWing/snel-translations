@@ -248,6 +248,14 @@ class TranslationGroup {
 	 * /cases/. Mirrors the archive rewrite rules in Router::registerRewriteRules.
 	 */
 	public static function filterArchiveLink( $url, $post_type ) {
+		// 'post' has no rewrite slug and no real archive — core resolves its
+		// "archive" to the posts page, and filterPostsPageId already swaps that
+		// to the current language. Rebuilding it below would yield /post/, which
+		// routes nowhere.
+		if ( $post_type === 'post' ) {
+			return $url;
+		}
+
 		$lang    = LocaleManager::current();
 		$default = LocaleManager::default();
 
