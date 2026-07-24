@@ -32,7 +32,7 @@ class Router {
 		add_action( 'template_redirect', [ self::class, 'canonicalizeSwappedSlug' ], 9 ); // before redirect_canonical (10)
 
 		// Force one flush after deploy if the rules are stale.
-		$rules_version = 'snel_rewrite_v7';
+		$rules_version = 'snel_rewrite_v8';
 		if ( get_option( $rules_version ) !== '1' ) {
 			add_action( 'init', function () use ( $rules_version ) {
 				flush_rewrite_rules();
@@ -141,6 +141,10 @@ class Router {
 				add_rewrite_rule( "^{$lang}/{$base}/([^/]+)/?$", "index.php?lang={$lang}&{$qv}=\$matches[1]", 'top' );
 			}
 
+			// Paginated page (e.g. the posts page: /en/blog/page/2/) — must beat
+			// the catch-all, which would swallow it as pagename "blog/page/2".
+			add_rewrite_rule( "^{$lang}/(.+?)/page/([0-9]+)/?$", "index.php?lang={$lang}&pagename=\$matches[1]&paged=\$matches[2]", 'top' );
+
 			// Catch-all for pages/posts (lowest priority — added last).
 			add_rewrite_rule( "^{$lang}/(.+?)/?$", "index.php?lang={$lang}&pagename=\$matches[1]", 'top' );
 		}
@@ -182,6 +186,14 @@ class Router {
 
 		if ( preg_match( '#^page/(\d+)$#', $path, $page_match ) ) {
 			$new_vars['paged'] = (int) $page_match[1];
+			return $new_vars;
+		}
+
+		// Trailing /page/N on a page path (e.g. blog/page/2) — split it off, or
+		// the whole thing becomes an unresolvable pagename.
+		if ( preg_match( '#^(.+?)/page/(\d+)$#', $path, $page_match ) ) {
+			$new_vars['pagename'] = $page_match[1];
+			$new_vars['paged']    = (int) $page_match[2];
 			return $new_vars;
 		}
 
