@@ -23,6 +23,41 @@ class AdminColumns {
 		add_action( 'admin_head', [ self::class, 'widths' ] );
 		add_action( 'restrict_manage_posts', [ self::class, 'filterDropdown' ] );
 		add_action( 'pre_get_posts', [ self::class, 'filterQuery' ] );
+		// Priority 20: core's own _wp_nav_menu_meta_box_object (added later, at
+		// priority 10, from wp-admin/includes/admin-filters.php) *assigns*
+		// _default_query rather than merging, so at 10 our meta_query is wiped.
+		add_filter( 'nav_menu_meta_box_object', [ self::class, 'filterNavMenuPicker' ], 20 );
+	}
+
+	/**
+	 * Limit the Appearance → Menus post-type pickers to source-language posts.
+	 *
+	 * A menu is built once, in the default language; Nav::item() swaps each item
+	 * to the visitor's language per request. Listing every sibling there invites
+	 * adding, say, the German page — which would pin that one language for all
+	 * visitors. Taxonomy boxes run through this same filter, so bail on those:
+	 * term translations live in term meta, not post meta.
+	 */
+	public static function filterNavMenuPicker( $object ) {
+		if ( ! $object instanceof \WP_Post_Type ) {
+			return $object;
+		}
+
+		$default = snel_get_default_lang();
+		$query   = isset( $object->_default_query ) ? (array) $object->_default_query : [];
+		$meta    = ( isset( $query['meta_query'] ) && is_array( $query['meta_query'] ) ) ? $query['meta_query'] : [];
+
+		// Posts predating the plugin carry no language meta — they're sources too.
+		$meta[] = [
+			'relation' => 'OR',
+			[ 'key' => TranslationGroup::META_LANG, 'value' => $default ],
+			[ 'key' => TranslationGroup::META_LANG, 'compare' => 'NOT EXISTS' ],
+		];
+
+		$query['meta_query']    = $meta;
+		$object->_default_query = $query;
+
+		return $object;
 	}
 
 	/** Add the columns to every public post type. */
