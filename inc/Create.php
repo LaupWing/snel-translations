@@ -199,6 +199,9 @@ class Create {
 			}
 		}
 
+		// Tell the slug filter which language this post will be — the meta
+		// doesn't exist yet while wp_insert_post resolves the slug.
+		TranslationGroup::setPendingLang( $target );
 		$new_id = wp_insert_post( [
 			'post_type'      => $source->post_type,
 			'post_status'    => 'draft',
@@ -212,6 +215,7 @@ class Create {
 			'comment_status' => $source->comment_status,
 			'ping_status'    => $source->ping_status,
 		], true );
+		TranslationGroup::setPendingLang( null );
 
 		if ( is_wp_error( $new_id ) ) {
 			wp_send_json_error( [ 'message' => $new_id->get_error_message() ] );
@@ -365,6 +369,8 @@ class Create {
 					$new_parent = $parent_sibling;
 				}
 			}
+			// Same pending-language hint as create_translation — see there.
+			TranslationGroup::setPendingLang( $target );
 			$target_id = wp_insert_post( [
 				'post_type'      => $source->post_type,
 				'post_status'    => $publish ? 'publish' : 'draft',
@@ -376,6 +382,7 @@ class Create {
 				'comment_status' => $source->comment_status,
 				'ping_status'    => $source->ping_status,
 			], true );
+			TranslationGroup::setPendingLang( null );
 			if ( is_wp_error( $target_id ) ) {
 				return [ 'ok' => false, 'message' => $target_id->get_error_message() ];
 			}

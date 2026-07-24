@@ -140,6 +140,22 @@ class TranslationGroup {
 	 * unique slugs; we only want uniqueness within the same language (the Router
 	 * disambiguates by language prefix).
 	 */
+	/**
+	 * Language of the translation currently being inserted.
+	 *
+	 * wp_insert_post() resolves the slug *before* any meta is written, so a
+	 * brand-new sibling has no _snel_lang yet when uniqueSlug() runs — it would
+	 * read as default-language, every collision would look same-language, and
+	 * the sibling would keep WP's suffixed slug (blog-2, blog-3, …). Create
+	 * sets this around the insert so the filter knows the real language.
+	 */
+	private static ?string $pendingLang = null;
+
+	/** Declare the language of the post about to be inserted (null to clear). */
+	public static function setPendingLang( ?string $lang ): void {
+		self::$pendingLang = $lang;
+	}
+
 	public static function uniqueSlug( $slug, $post_ID, $post_status, $post_type, $post_parent, $original_slug ) {
 		if ( $slug === $original_slug ) {
 			return $slug; // no collision
@@ -160,7 +176,10 @@ class TranslationGroup {
 			return $slug;
 		}
 
-		$my_lang = self::langOf( (int) $post_ID );
+		// Mid-insert the post has no _snel_lang yet — trust the pending hint.
+		$my_lang = get_post_meta( (int) $post_ID, self::META_LANG, true )
+			? self::langOf( (int) $post_ID )
+			: ( self::$pendingLang ?? self::langOf( (int) $post_ID ) );
 		foreach ( $rows as $other_id ) {
 			if ( self::langOf( (int) $other_id ) === $my_lang ) {
 				return $slug; // genuine same-language collision — keep WP's slug
