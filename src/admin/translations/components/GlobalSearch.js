@@ -82,29 +82,6 @@ export default function GlobalSearch( { onNavigate } ) {
             } );
         } );
 
-        // Pages (fetch from REST).
-        try {
-            const res = await fetch( `${ window.snelTranslations.restUrl }/pages`, {
-                headers: { 'X-WP-Nonce': window.snelTranslations.nonce },
-            } );
-            const pages = await res.json();
-            ( Array.isArray( pages ) ? pages : [] ).forEach( ( page ) => {
-                ( page.blocks || [] ).forEach( ( block ) => {
-                    ( block.attributes || [] ).forEach( ( attr ) => {
-                        const vals = Object.values( attr.values || {} );
-                        items.push( {
-                            tab: 'pages',
-                            key: attr.key,
-                            pageId: page.id,
-                            searchText: [ page.title, block.label, attr.key, ...vals ].join( ' ' ),
-                            display: `${ attr.values?.nl || attr.key }`,
-                            detail: `${ page.title } — ${ block.label }`,
-                        } );
-                    } );
-                } );
-            } );
-        } catch { /* ignore */ }
-
         setAllData( items );
         setLoading( false );
     };
