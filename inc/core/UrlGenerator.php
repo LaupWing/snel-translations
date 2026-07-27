@@ -54,12 +54,13 @@ class UrlGenerator {
 			$current_id = get_queried_object_id();
 			if ( $current_id ) {
 				$sibling_id = TranslationGroup::translation( $current_id, $target_lang );
-				if ( $sibling_id ) {
+				// Drafts have no public URL (?p=N would 404) — treat as missing.
+				if ( $sibling_id && get_post_status( $sibling_id ) === 'publish' ) {
 					return self::prefixedPermalink( $sibling_id, $target_lang );
 				}
-				// No sibling: keep the path and just swap the prefix. Router::
-				// resolveLanguagePost renders the untranslated post there rather
-				// than 404ing, so this matches what direct URL entry already does.
+				// No sibling: keep the path and just swap the prefix. Router pins
+				// the untranslated post there and 302s back to its own-language
+				// URL, so the link degrades to the language the post exists in.
 			}
 		}
 

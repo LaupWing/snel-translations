@@ -93,16 +93,26 @@ $tr_id = wp_insert_post( [
 	'post_content'=> '<p>snel-smoke-translated-body</p>',
 ], true );
 
-if ( is_wp_error( $src_id ) || is_wp_error( $tr_id ) ) {
+$post_id = wp_insert_post( [
+	'post_title'  => 'Snel Smoke Post',
+	'post_name'   => 'snel-smoke-post',
+	'post_status' => 'publish',
+	'post_type'   => 'post',
+	'post_content'=> '<p>snel-smoke-post-body</p>',
+], true );
+
+if ( is_wp_error( $src_id ) || is_wp_error( $tr_id ) || is_wp_error( $post_id ) ) {
 	fwrite( STDERR, "Could not create fixtures.\n" );
 	exit( 1 );
 }
 TranslationGroup::link( (int) $src_id, (int) $src_id, $default_lang );
 TranslationGroup::link( (int) $tr_id, (int) $src_id, $lang );
+TranslationGroup::link( (int) $post_id, (int) $post_id, $default_lang ); // deliberately untranslated
 
-$cleanup = function () use ( $src_id, $tr_id ) {
+$cleanup = function () use ( $src_id, $tr_id, $post_id ) {
 	wp_delete_post( (int) $src_id, true );
 	wp_delete_post( (int) $tr_id, true );
+	wp_delete_post( (int) $post_id, true );
 	echo "Fixtures: deleted.\n";
 };
 
@@ -157,13 +167,17 @@ check( 'language home → 200 (no redirect loop)', $code === 200, "got {$code}" 
 [ $code, $loc ] = fetch( "/{$lang}" );
 check( 'language home without slash → 301 → /' . $lang . '/', $code === 301 && substr( $loc, -strlen( "/{$lang}/" ) ) === "/{$lang}/", "got {$code} → {$loc}" );
 
-// ─── 5. Draft fallback (invariant 1) ─────────────────────────────────────────
-echo "Draft fallback:\n";
+// ─── 5. Untranslated fallback (invariant 1) ──────────────────────────────────
+echo "Untranslated fallback:\n";
+[ $code, $loc ] = fetch( "/{$lang}/snel-smoke-post/" ); // post with no sibling in $lang
+check( 'untranslated post under /' . $lang . '/ → 302 (no 404)', $code === 302, "got {$code}" );
+check( '…to its own-language URL', strpos( $loc, '/snel-smoke-post/' ) !== false && strpos( $loc, "/{$lang}/" ) === false, $loc );
+
 wp_update_post( [ 'ID' => (int) $tr_id, 'post_status' => 'draft' ] );
 
-[ $code, , $body ] = fetch( "/{$lang}/snel-smoke-source/" );
-check( 'draft sibling: URL still resolves (no 404)', $code === 200, "got {$code}" );
-check( 'draft sibling: falls back to source content', strpos( $body, 'snel-smoke-source-body' ) !== false );
+[ $code, $loc ] = fetch( "/{$lang}/snel-smoke-source/" );
+check( 'draft sibling: 302 back to source (no 404)', $code === 302, "got {$code}" );
+check( '…to the source URL', strpos( $loc, '/snel-smoke-source/' ) !== false, $loc );
 
 [ , , $body ] = fetch( '/snel-smoke-source/' );
 check( 'draft sibling: no hreflang advertised', strpos( $body, 'hreflang="' . $lang . '"' ) === false );

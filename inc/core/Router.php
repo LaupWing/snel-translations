@@ -292,15 +292,21 @@ class Router {
 		$target = $post;
 		if ( TranslationGroup::langOf( $post->ID ) !== $lang ) {
 			$sibling_id = TranslationGroup::translation( $post->ID, $lang );
-			if ( ! $sibling_id ) {
-				return $query_vars; // no translation — let WP render what it found
+			$sibling    = $sibling_id ? get_post( $sibling_id ) : null;
+			if ( ! $sibling instanceof \WP_Post || $sibling->post_status !== 'publish' ) {
+				// Language home with an untranslated front page: render it in
+				// place — redirecting /en/ to / would dead-end the switcher.
+				if ( $post->ID === (int) get_option( 'page_on_front' ) ) {
+					return $query_vars;
+				}
+				// No published translation. Pin the found post anyway — core only
+				// resolves `pagename` against hierarchical types, so leaving the
+				// vars untouched 404s a blog post. canonicalizeSwappedSlug then
+				// 302s to the post's own-language URL.
+				self::$fallbackTarget = $post->ID;
+				return self::pinPost( $query_vars, $post );
 			}
-			$target = get_post( $sibling_id );
-			// Ignore unpublished translations — fall back to the found post so the
-			// URL still resolves instead of 404ing on a draft.
-			if ( ! $target instanceof \WP_Post || $target->post_status !== 'publish' ) {
-				return $query_vars;
-			}
+			$target = $sibling;
 			// The URL carried the *other* language's slug — remember the swap so
 			// canonicalizeSwappedSlug can 301 to the real URL (core can't: only
 			// the plugin knows the two slugs are siblings).
@@ -313,21 +319,27 @@ class Router {
 	/** Post id pinned in place of the slug the URL actually carried. */
 	private static ?int $swappedTarget = null;
 
+	/** Post pinned under a language prefix it has no translation in. */
+	private static ?int $fallbackTarget = null;
+
 	/**
-	 * 301 a sibling-swapped URL to the pinned post's own permalink, e.g.
-	 * /en/{nl-slug}/ → /en/{en-slug}/ (and {en-slug} at the root → {nl-slug}).
+	 * Redirect a pinned post to its own permalink: 301 for a sibling-swapped
+	 * URL (/en/{nl-slug}/ → /en/{en-slug}/), 302 for an untranslated post under
+	 * a foreign prefix (/en/{nl-slug}/ → /{nl-slug}/) — temporary because the
+	 * prefixed URL becomes real the moment the translation is published.
 	 * Runs just before redirect_canonical. Skips previews, feeds, embeds and
 	 * paginated requests — those must keep the URL they were asked on.
 	 */
 	public static function canonicalizeSwappedSlug(): void {
-		if ( ! self::$swappedTarget || is_preview() || is_feed() || is_embed() ) {
+		$target = self::$swappedTarget ?? self::$fallbackTarget;
+		if ( ! $target || is_preview() || is_feed() || is_embed() ) {
 			return;
 		}
 		if ( get_query_var( 'paged' ) || get_query_var( 'page' ) || get_query_var( 'cpage' ) ) {
 			return;
 		}
 
-		$canonical = get_permalink( self::$swappedTarget );
+		$canonical = get_permalink( $target );
 		if ( ! $canonical ) {
 			return;
 		}
@@ -340,7 +352,7 @@ class Router {
 		}
 
 		$query = (string) wp_parse_url( $request, PHP_URL_QUERY );
-		wp_safe_redirect( $canonical . ( $query !== '' ? '?' . $query : '' ), 301 );
+		wp_safe_redirect( $canonical . ( $query !== '' ? '?' . $query : '' ), self::$swappedTarget ? 301 : 302 );
 		exit;
 	}
 
