@@ -172,6 +172,10 @@ echo "Untranslated fallback:\n";
 [ $code, $loc ] = fetch( "/{$lang}/snel-smoke-post/" ); // post with no sibling in $lang
 check( 'untranslated post under /' . $lang . '/ → 302 (no 404)', $code === 302, "got {$code}" );
 check( '…to its own-language URL', strpos( $loc, '/snel-smoke-post/' ) !== false && strpos( $loc, "/{$lang}/" ) === false, $loc );
+check( '…carrying snel_notrans=' . $lang, strpos( $loc, 'snel_notrans=' . $lang ) !== false, $loc );
+
+[ , , $body ] = fetch( '/snel-smoke-post/?snel_notrans=' . $lang );
+check( 'landing page renders fallback toast', strpos( $body, 'snel-notrans-toast' ) !== false );
 
 wp_update_post( [ 'ID' => (int) $tr_id, 'post_status' => 'draft' ] );
 

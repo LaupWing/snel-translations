@@ -304,6 +304,7 @@ class Router {
 				// vars untouched 404s a blog post. canonicalizeSwappedSlug then
 				// 302s to the post's own-language URL.
 				self::$fallbackTarget = $post->ID;
+				self::$fallbackLang   = $lang;
 				return self::pinPost( $query_vars, $post );
 			}
 			$target = $sibling;
@@ -321,6 +322,9 @@ class Router {
 
 	/** Post pinned under a language prefix it has no translation in. */
 	private static ?int $fallbackTarget = null;
+
+	/** Language the visitor asked for when the fallback post was pinned. */
+	private static ?string $fallbackLang = null;
 
 	/**
 	 * Redirect a pinned post to its own permalink: 301 for a sibling-swapped
@@ -352,6 +356,11 @@ class Router {
 		}
 
 		$query = (string) wp_parse_url( $request, PHP_URL_QUERY );
+		if ( ! self::$swappedTarget && self::$fallbackLang ) {
+			// FallbackNotice reads this on the landing page: shows a "not
+			// translated yet" toast, then strips the param from the URL.
+			$query = ( $query !== '' ? $query . '&' : '' ) . 'snel_notrans=' . rawurlencode( self::$fallbackLang );
+		}
 		wp_safe_redirect( $canonical . ( $query !== '' ? '?' . $query : '' ), self::$swappedTarget ? 301 : 302 );
 		exit;
 	}

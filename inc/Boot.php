@@ -39,6 +39,7 @@ class Boot {
 		require_once SNEL_TR_DIR . 'inc/core/Translator.php';
 		require_once SNEL_TR_DIR . 'inc/core/TermTranslation.php';
 		require_once SNEL_TR_DIR . 'inc/core/Hreflang.php';
+		require_once SNEL_TR_DIR . 'inc/core/FallbackNotice.php';
 
 		// ── Helpers + request/service layers ─────────────────────────────────
 		require_once SNEL_TR_DIR . 'inc/helpers.php';
@@ -57,6 +58,7 @@ class Boot {
 		Core\TranslationGroup::register();  // permalink prefix + archive filter + save
 		Core\TermTranslation::register();   // translated term labels (front end)
 		Core\Hreflang::register();          // <link rel="alternate" hreflang> in <head>
+		Core\FallbackNotice::register();    // toast after untranslated-content redirect
 		Nav::register();                    // nav menu item resolution
 		Ai::register();                     // snel_translate AJAX
 		Create::register();                 // create/sync/state AJAX + editor data
