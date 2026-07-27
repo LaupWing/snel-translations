@@ -26,11 +26,11 @@ class FallbackNotice {
 	/** Toast copy per requested language; unknown languages fall back to English. */
 	private static function message( string $lang ): string {
 		$messages = [
-			'nl' => 'Deze pagina is nog niet beschikbaar in het Nederlands — je ziet de originele versie.',
-			'en' => 'This page isn’t available in English yet — showing the original version.',
-			'fr' => 'Cette page n’est pas encore disponible en français — version originale affichée.',
-			'es' => 'Esta página aún no está disponible en español — se muestra la versión original.',
-			'de' => 'Diese Seite ist noch nicht auf Deutsch verfügbar — Originalversion wird angezeigt.',
+			'nl' => 'Deze pagina is nog niet beschikbaar in het Nederlands. Je ziet de originele versie.',
+			'en' => 'This page isn’t available in English yet. Showing the original version.',
+			'fr' => 'Cette page n’est pas encore disponible en français. Version originale affichée.',
+			'es' => 'Esta página aún no está disponible en español. Se muestra la versión original.',
+			'de' => 'Diese Seite ist noch nicht auf Deutsch verfügbar. Originalversion wird angezeigt.',
 		];
 		return $messages[ $lang ] ?? $messages['en'];
 	}
