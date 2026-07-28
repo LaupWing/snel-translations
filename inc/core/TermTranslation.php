@@ -239,9 +239,27 @@ class TermTranslation {
 			.snel-tr.is-translating .snel-tr-panel.is-active::after{content:"";position:absolute;inset:-4px;background:rgba(255,255,255,.65);border-radius:6px;z-index:1}
 			.snel-tr.is-translating .snel-tr-panel.is-active::before{content:"";position:absolute;top:40px;left:50%;width:24px;height:24px;margin-left:-12px;border:2px solid #dcdcde;border-top-color:#2271b1;border-radius:50%;animation:snel-spin .7s linear infinite;z-index:2}
 			@keyframes snel-spin{to{transform:rotate(360deg)}}
+			.snel-tr-log{margin-top:12px;padding:10px 12px;background:#1d2327;color:#9ec2e6;font-size:12px;line-height:1.5;border-radius:6px;max-height:280px;overflow:auto;white-space:pre-wrap;word-break:break-word;user-select:all}
+			.snel-tr-log.is-error{color:#f0b849}
 		</style>
 		<script>
 		( function () {
+			// Debug log box: printed under the fields so it can be copy-pasted.
+			function showLog( root, lines, ok ) {
+				var pre = root.querySelector( '.snel-tr-log' );
+				if ( ! lines || ! lines.length ) {
+					if ( pre ) pre.remove();
+					return;
+				}
+				if ( ! pre ) {
+					pre = document.createElement( 'pre' );
+					pre.className = 'snel-tr-log';
+					root.appendChild( pre );
+				}
+				pre.classList.toggle( 'is-error', ! ok );
+				pre.textContent = lines.join( '\n' );
+			}
+
 			document.querySelectorAll( '.snel-tr' ).forEach( function ( root ) {
 				root.querySelectorAll( '.snel-tr-tab' ).forEach( function ( tab ) {
 					tab.addEventListener( 'click', function () {
@@ -262,19 +280,22 @@ class TermTranslation {
 					fetch( ajaxurl, { method: 'POST', body: body, credentials: 'same-origin' } )
 						.then( function ( r ) { return r.json(); } )
 						.then( function ( res ) {
+							var data = ( res && res.data ) || {};
+							showLog( root, data.debug, res && res.success );
 							if ( res && res.success ) {
-								Object.keys( res.data ).forEach( function ( lang ) {
+								var tr = data.translations || {};
+								Object.keys( tr ).forEach( function ( lang ) {
 									var panel = root.querySelector( '.snel-tr-panel[data-lang="' + lang + '"]' );
 									if ( ! panel ) return;
 									var n = panel.querySelector( '.snel-tr-name' );
 									var d = panel.querySelector( '.snel-tr-desc' );
 									var s = panel.querySelector( '.snel-tr-slug' );
-									if ( n && ! n.value ) n.value = res.data[ lang ].name || '';
-									if ( d && ! d.value ) d.value = res.data[ lang ].desc || '';
-									if ( s && ! s.value ) s.value = res.data[ lang ].slug || '';
+									if ( n && ! n.value ) n.value = tr[ lang ].name || '';
+									if ( d && ! d.value ) d.value = tr[ lang ].desc || '';
+									if ( s && ! s.value ) s.value = tr[ lang ].slug || '';
 								} );
 							} else {
-								alert( ( res && res.data && res.data.message ) || 'Translation failed.' );
+								alert( ( data && data.message ) || 'Translation failed.' );
 							}
 						} )
 						.catch( function () { alert( 'Request failed.' ); } )
@@ -301,10 +322,11 @@ class TermTranslation {
 
 		$source = LocaleManager::default();
 		$out    = [];
+		\Snel\Translations\Ai::log( sprintf( 'term translate: #%d "%s" (desc %d chars)', $term->term_id, $term->name, strlen( (string) $term->description ) ) );
 		foreach ( self::targetLangs() as $lang ) {
 			$tr = \Snel\Translations\Ai::translate( [ $term->name, (string) $term->description ], $source, $lang );
 			if ( is_wp_error( $tr ) ) {
-				wp_send_json_error( [ 'message' => $tr->get_error_message() ] );
+				wp_send_json_error( [ 'message' => $tr->get_error_message(), 'debug' => \Snel\Translations\Ai::logs() ] );
 			}
 			// AI sometimes returns HTML-encoded text (e.g. "&amp;"). Decode to a
 			// clean "&" so it isn't stored double-encoded.
@@ -316,7 +338,7 @@ class TermTranslation {
 			];
 		}
 
-		wp_send_json_success( $out );
+		wp_send_json_success( [ 'translations' => $out, 'debug' => \Snel\Translations\Ai::logs() ] );
 	}
 
 	/** Save the per-language name/description meta. */

@@ -20,6 +20,29 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Ai {
 
+	/** Log lines collected during this request, for showing in the admin UI. */
+	private static array $buffer = [];
+
+	/**
+	 * Debug log for the translate flow. Kept in a buffer (returned to the
+	 * admin UI via logs()) and mirrored to the PHP error log, prefix [snel-tr].
+	 */
+	public static function log( string $msg ): void {
+		self::$buffer[] = $msg;
+		error_log( '[snel-tr] ' . $msg );
+	}
+
+	/** All log lines collected this request. */
+	public static function logs(): array {
+		return self::$buffer;
+	}
+
+	/** Compact one-line preview of a text segment for the log. */
+	private static function preview( string $text, int $max = 200 ): string {
+		$text = str_replace( [ "\r", "\n" ], '\n', $text );
+		return strlen( $text ) > $max ? substr( $text, 0, $max ) . '…(' . strlen( $text ) . ' chars)' : $text;
+	}
+
 	/** Register the AJAX endpoint. Called from Boot when live. */
 	public static function register(): void {
 		add_action( 'wp_ajax_snel_translate', [ self::class, 'ajax' ] );
@@ -70,6 +93,38 @@ class Ai {
 		$texts = array_values( $texts );
 		if ( empty( $texts ) ) {
 			return [];
+		}
+
+		self::log( sprintf( 'translate() %s→%s, %d segment(s)', $source, $target, count( $texts ) ) );
+		foreach ( $texts as $i => $t ) {
+			self::log( sprintf( '  in[%d]: "%s"', $i, self::preview( (string) $t ) ) );
+		}
+
+		// Empty segments confuse the model (it drops them and the separator,
+		// causing a count mismatch). Translate only non-empty texts and put
+		// empty strings back in their original positions afterwards.
+		$non_empty = [];
+		foreach ( $texts as $i => $text ) {
+			if ( trim( (string) $text ) !== '' ) {
+				$non_empty[ $i ] = (string) $text;
+			}
+		}
+		if ( empty( $non_empty ) ) {
+			self::log( 'all segments empty — skipping AI call, returning empty strings' );
+			return array_fill( 0, count( $texts ), '' );
+		}
+		if ( count( $non_empty ) !== count( $texts ) ) {
+			self::log( sprintf( 'stripped %d empty segment(s), sending %d to AI', count( $texts ) - count( $non_empty ), count( $non_empty ) ) );
+			$translated = self::translate( array_values( $non_empty ), $source, $target );
+			if ( is_wp_error( $translated ) ) {
+				return $translated;
+			}
+			$out  = array_fill( 0, count( $texts ), '' );
+			$keys = array_keys( $non_empty );
+			foreach ( $keys as $pos => $i ) {
+				$out[ $i ] = $translated[ $pos ];
+			}
+			return $out;
 		}
 
 		if ( ! function_exists( 'wp_ai_client_prompt' ) ) {
@@ -135,6 +190,7 @@ class Ai {
 				break;
 			}
 			$msg = $output->get_error_message();
+			self::log( sprintf( 'AI error (attempt %d/%d): %s', $attempt, $max_attempts, $msg ) );
 
 			if ( self::is_quota_error( $msg ) ) {
 				return new \WP_Error( 'snel_ai_quota', 'AI provider is out of quota/credits — add billing and retry. (' . $msg . ')' );
@@ -158,7 +214,16 @@ class Ai {
 			array_pop( $translations );
 		}
 
+		self::log( sprintf( 'chunk: sent %d, AI returned %d segment(s)', count( $texts ), count( $translations ) ) );
+		foreach ( $translations as $i => $t ) {
+			self::log( sprintf( '  out[%d]: "%s"', $i, self::preview( $t ) ) );
+		}
+
 		if ( count( $translations ) !== count( $texts ) ) {
+			// Log the raw, unsplit AI response — this is the evidence that shows
+			// whether the model dropped, merged or reworded the delimiter.
+			self::log( 'MISMATCH — raw AI output follows:' );
+			self::log( '>>> ' . self::preview( (string) $output, 4000 ) );
 			return new \WP_Error( 'snel_ai_mismatch', 'Translation count mismatch. Expected ' . count( $texts ) . ', got ' . count( $translations ) );
 		}
 
