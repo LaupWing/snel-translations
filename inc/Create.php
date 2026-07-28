@@ -392,6 +392,17 @@ class Create {
 		}
 
 		self::copy_terms( $source_id, $target_id );
+
+		// Keep the featured image in sync. copy_meta() only runs when the
+		// translation is first created, so a later thumbnail change on the
+		// source has to be copied over explicitly on every re-sync.
+		$thumb = get_post_meta( $source_id, '_thumbnail_id', true );
+		if ( $thumb ) {
+			update_post_meta( $target_id, '_thumbnail_id', $thumb );
+		} else {
+			delete_post_meta( $target_id, '_thumbnail_id' );
+		}
+
 		$new_memory = $tr['memory'] ?? [];
 		self::translate_meta( $source_id, $target_id, $source_lang, $target, $memory, $new_memory );
 		self::store_memory( $target_id, $new_memory );
@@ -500,6 +511,10 @@ class Create {
 				$parts[] = $val;
 			}
 		}
+
+		// The featured image isn't translated but IS synced — a thumbnail swap
+		// on the source must mark translations outdated too.
+		$parts[] = (string) get_post_meta( $source_id, '_thumbnail_id', true );
 
 		return md5( implode( "\x1f", $parts ) );
 	}
