@@ -32,7 +32,7 @@ class Router {
 		add_action( 'template_redirect', [ self::class, 'canonicalizeSwappedSlug' ], 9 ); // before redirect_canonical (10)
 
 		// Force one flush after deploy if the rules are stale.
-		$rules_version = 'snel_rewrite_v8';
+		$rules_version = 'snel_rewrite_v9';
 		if ( get_option( $rules_version ) !== '1' ) {
 			add_action( 'init', function () use ( $rules_version ) {
 				flush_rewrite_rules();
@@ -132,13 +132,17 @@ class Router {
 			}
 
 			// Taxonomy term archives (categories, tags, custom public taxonomies).
+			// A hierarchical rewrite matches the full nested path (parent/child),
+			// mirroring core's own hierarchical taxonomy rules.
 			foreach ( $taxes as $tax ) {
 				if ( $tax->name === 'post_format' ) {
 					continue;
 				}
-				$base = $slug_of( $tax );
-				$qv   = $tax->name === 'category' ? 'category_name' : ( $tax->name === 'post_tag' ? 'tag' : $tax->name );
-				add_rewrite_rule( "^{$lang}/{$base}/([^/]+)/?$", "index.php?lang={$lang}&{$qv}=\$matches[1]", 'top' );
+				$base    = $slug_of( $tax );
+				$qv      = $tax->name === 'category' ? 'category_name' : ( $tax->name === 'post_tag' ? 'tag' : $tax->name );
+				$segment = ( is_array( $tax->rewrite ) && ! empty( $tax->rewrite['hierarchical'] ) ) ? '(.+?)' : '([^/]+)';
+				add_rewrite_rule( "^{$lang}/{$base}/{$segment}/page/([0-9]+)/?$", "index.php?lang={$lang}&{$qv}=\$matches[1]&paged=\$matches[2]", 'top' );
+				add_rewrite_rule( "^{$lang}/{$base}/{$segment}/?$", "index.php?lang={$lang}&{$qv}=\$matches[1]", 'top' );
 			}
 
 			// Paginated page (e.g. the posts page: /en/blog/page/2/) — must beat

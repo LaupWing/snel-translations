@@ -99,9 +99,18 @@ class TermTranslation {
 			return $url;
 		}
 
-		$tslug = get_term_meta( $term->term_id, self::slugKey( $lang ), true );
-		if ( $tslug !== '' && $tslug !== $term->slug ) {
-			$url = preg_replace( '#/' . preg_quote( $term->slug, '#' ) . '(/|$)#', '/' . $tslug . '$1', $url, 1 );
+		// Swap the term's own slug AND every ancestor's slug (hierarchical
+		// taxonomies build nested paths like /producten/parent/child/).
+		$chain = array_merge( [ $term->term_id ], get_ancestors( $term->term_id, $taxonomy, 'taxonomy' ) );
+		foreach ( $chain as $tid ) {
+			$t = get_term( $tid, $taxonomy );
+			if ( ! $t instanceof \WP_Term ) {
+				continue;
+			}
+			$tslug = get_term_meta( $t->term_id, self::slugKey( $lang ), true );
+			if ( $tslug !== '' && $tslug !== $t->slug ) {
+				$url = preg_replace( '#/' . preg_quote( $t->slug, '#' ) . '(/|$)#', '/' . $tslug . '$1', $url, 1 );
+			}
 		}
 
 		return UrlGenerator::url( $url );
@@ -122,10 +131,16 @@ class TermTranslation {
 			if ( empty( $query_vars[ $var ] ) || ! is_string( $query_vars[ $var ] ) ) {
 				continue;
 			}
-			$real = self::realSlug( $tax->name, $lang, $query_vars[ $var ] );
-			if ( $real ) {
-				$query_vars[ $var ] = $real;
+			// Hierarchical requests carry a nested path (parent/child) where every
+			// segment may be a translated slug — map each one back individually.
+			$segments = explode( '/', $query_vars[ $var ] );
+			foreach ( $segments as $i => $segment ) {
+				$real = self::realSlug( $tax->name, $lang, $segment );
+				if ( $real ) {
+					$segments[ $i ] = $real;
+				}
 			}
+			$query_vars[ $var ] = implode( '/', $segments );
 		}
 
 		return $query_vars;
