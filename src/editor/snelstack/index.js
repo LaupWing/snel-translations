@@ -94,6 +94,7 @@ function TranslationsPanel() {
 	// Existing translations that are out of date (source edited since).
 	const isOutdated = (l) => l.postId && l.outdated;
 	const outdated = others.filter(isOutdated);
+	const existingTranslations = others.filter((l) => l.postId);
 	const isSourceLang = (l) => l.code === data?.defaultLang;
 
 	// Re-fetch the translation state from the server (statuses, outdated flags).
@@ -225,17 +226,17 @@ function TranslationsPanel() {
 		setBusy(false);
 	};
 
-	const handleSyncAll = async () => {
-		if (!outdated.length) return;
+	const handleSyncAll = async (list) => {
+		if (!list.length) return;
 		setBusy(true);
 		setResult(null);
-		setBatch(outdated.map((l) => ({ code: l.code, label: l.label, state: 'pending', action: 'snel_sync_translation' })));
-		setStatus(__('Syncing outdated translations…', 'snel'));
+		setBatch(list.map((l) => ({ code: l.code, label: l.label, state: 'pending', action: 'snel_sync_translation' })));
+		setStatus(__('Syncing translations…', 'snel'));
 
 		const postId = currentPostId();
-		for (let i = 0; i < outdated.length; i++) {
-			const l = outdated[i];
-			setStatus(`${__('Re-translating', 'snel')} ${l.label} (${i + 1}/${outdated.length})…`);
+		for (let i = 0; i < list.length; i++) {
+			const l = list[i];
+			setStatus(`${__('Re-translating', 'snel')} ${l.label} (${i + 1}/${list.length})…`);
 			setBatch((prev) => prev.map((it) => (it.code === l.code ? { ...it, state: 'working' } : it)));
 			const r = await callAction('snel_sync_translation', postId, l.code);
 			setBatch((prev) => prev.map((it) => (
@@ -374,11 +375,22 @@ function TranslationsPanel() {
 				<Button
 					variant="secondary"
 					isDestructive
-					onClick={() => setShowSyncAll(true)}
+					onClick={() => setShowSyncAll('outdated')}
 					disabled={busy}
 					style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
 				>
 					{`↻ ${__('Sync all outdated', 'snel')} (${outdated.length})`}
+				</Button>
+			)}
+
+			{isDefault && existingTranslations.length > 0 && (
+				<Button
+					variant="secondary"
+					onClick={() => setShowSyncAll('all')}
+					disabled={busy}
+					style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
+				>
+					{`↻ ${__('Re-Sync all', 'snel')} (${existingTranslations.length})`}
 				</Button>
 			)}
 
@@ -424,22 +436,25 @@ function TranslationsPanel() {
 					</div>
 				</div>
 			)}
-			{showSyncAll && (
-				<Modal title={__('Sync outdated translations', 'snel')} onRequestClose={() => setShowSyncAll(false)}>
-					<p style={{ fontSize: 13, marginTop: 0 }}>
-						{__('This re-translates the source content into each outdated language and overwrites the current translated content. Any manual edits in those translations will be lost.', 'snel')}
-					</p>
-					<p style={{ fontSize: 13, fontWeight: 600 }}>
-						{outdated.length} {__('will be overwritten:', 'snel')} {outdated.map((l) => l.label).join(', ')}
-					</p>
-					<div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
-						<Button variant="tertiary" onClick={() => setShowSyncAll(false)}>{__('Cancel', 'snel')}</Button>
-						<Button variant="primary" isDestructive onClick={() => { setShowSyncAll(false); handleSyncAll(); }}>
-							{__('Sync all', 'snel')}
-						</Button>
-					</div>
-				</Modal>
-			)}
+			{showSyncAll && (() => {
+				const syncList = showSyncAll === 'all' ? existingTranslations : outdated;
+				return (
+					<Modal title={__('Re-sync translations', 'snel')} onRequestClose={() => setShowSyncAll(false)}>
+						<p style={{ fontSize: 13, marginTop: 0 }}>
+							{__('This re-translates the source content into each language and overwrites the current translated content. Unchanged text is reused from memory (no AI cost); manual edits in those translations will be lost.', 'snel')}
+						</p>
+						<p style={{ fontSize: 13, fontWeight: 600 }}>
+							{syncList.length} {__('will be overwritten:', 'snel')} {syncList.map((l) => l.label).join(', ')}
+						</p>
+						<div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+							<Button variant="tertiary" onClick={() => setShowSyncAll(false)}>{__('Cancel', 'snel')}</Button>
+							<Button variant="primary" isDestructive onClick={() => { setShowSyncAll(false); handleSyncAll(syncList); }}>
+								{__('Re-Sync', 'snel')}
+							</Button>
+						</div>
+					</Modal>
+				);
+			})()}
 		</div>
 	);
 }

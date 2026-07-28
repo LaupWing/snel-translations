@@ -85,8 +85,10 @@ class AdminColumns {
 			.snel-chip--done { background:#dcfce7; color:#15803d; }
 			.snel-chip--draft { background:#fef3c7; color:#b45309; box-shadow:inset 0 0 0 1px #fcd34d; }
 			.snel-chip--miss { background:#f1f5f9; color:#94a3b8; }
+			.snel-chip--stale { background:#ffedd5; color:#c2410c; box-shadow:inset 0 0 0 1px #fdba74; }
 			.snel-chip__dot { width:5px; height:5px; border-radius:50%; margin-right:2px; }
 			.snel-chip--draft .snel-chip__dot { background:#d97706; }
+			.snel-chip--stale .snel-chip__dot { background:#ea580c; }
 			a.snel-chip:hover { filter:brightness(.95); }
 			.snel-src { color:#64748b; font-size:12px; text-decoration:none; }
 			.snel-src:hover { text-decoration:underline; }
@@ -155,7 +157,9 @@ class AdminColumns {
 		}
 
 		// Source row: a chip per language — src / translated (link) / missing.
-		$siblings = snel_get_translations( $post_id );
+		// One signature per row lets each sibling chip show out-of-sync state.
+		$siblings   = snel_get_translations( $post_id );
+		$source_sig = Create::source_signature( $post_id );
 		foreach ( snel_get_supported_langs() as $code ) {
 			$up = esc_html( strtoupper( $code ) );
 
@@ -168,12 +172,23 @@ class AdminColumns {
 			} elseif ( ! empty( $siblings[ $code ] ) ) {
 				$sib_id   = (int) $siblings[ $code ];
 				$is_draft = get_post_status( $sib_id ) !== 'publish';
+				$is_stale = ! $is_draft && Create::is_outdated( (string) get_post_meta( $sib_id, Create::HASH_META, true ), $source_sig );
+				if ( $is_draft ) {
+					$class = 'draft';
+					$tip   = __( 'draft — not live · edit', 'snel' );
+				} elseif ( $is_stale ) {
+					$class = 'stale';
+					$tip   = __( 'out of sync — source changed · edit', 'snel' );
+				} else {
+					$class = 'done';
+					$tip   = __( 'published · edit', 'snel' );
+				}
 				printf(
 					'<a class="snel-chip snel-chip--%s" href="%s" title="%s">%s%s</a>',
-					$is_draft ? 'draft' : 'done',
+					$class,
 					esc_url( (string) get_edit_post_link( $sib_id ) ),
-					esc_attr( $label( $code ) . ' · ' . ( $is_draft ? __( 'draft — not live · edit', 'snel' ) : __( 'published · edit', 'snel' ) ) ),
-					$is_draft ? '<span class="snel-chip__dot"></span>' : '',
+					esc_attr( $label( $code ) . ' · ' . $tip ),
+					( $is_draft || $is_stale ) ? '<span class="snel-chip__dot"></span>' : '',
 					$up
 				);
 			} else {
