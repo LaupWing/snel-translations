@@ -300,6 +300,7 @@ class Create {
 		}
 
 		self::copy_terms( $source_id, $target_id );
+		self::sync_thumbnail( $source_id, $target_id );
 
 		$new_memory = $tr['memory'] ?? [];
 		self::translate_meta( $source_id, $target_id, $source_lang, $target, $memory, $new_memory );
@@ -310,6 +311,21 @@ class Create {
 			'edit_url' => get_edit_post_link( $target_id, 'raw' ),
 			'post_id'  => $target_id,
 		] );
+	}
+
+	/**
+	 * Keep the featured image in sync. copy_meta() only runs when a translation
+	 * is first created, so a later thumbnail change on the source has to be
+	 * copied over explicitly on every re-sync — in BOTH sync paths (the editor
+	 * ajax_sync and the bulk translate_one).
+	 */
+	public static function sync_thumbnail( int $source_id, int $target_id ): void {
+		$thumb = get_post_meta( $source_id, '_thumbnail_id', true );
+		if ( $thumb ) {
+			update_post_meta( $target_id, '_thumbnail_id', $thumb );
+		} else {
+			delete_post_meta( $target_id, '_thumbnail_id' );
+		}
 	}
 
 	// ─── Translation of a source post ────────────────────────────────────────
@@ -401,16 +417,7 @@ class Create {
 		}
 
 		self::copy_terms( $source_id, $target_id );
-
-		// Keep the featured image in sync. copy_meta() only runs when the
-		// translation is first created, so a later thumbnail change on the
-		// source has to be copied over explicitly on every re-sync.
-		$thumb = get_post_meta( $source_id, '_thumbnail_id', true );
-		if ( $thumb ) {
-			update_post_meta( $target_id, '_thumbnail_id', $thumb );
-		} else {
-			delete_post_meta( $target_id, '_thumbnail_id' );
-		}
+		self::sync_thumbnail( $source_id, $target_id );
 
 		$new_memory = $tr['memory'] ?? [];
 		self::translate_meta( $source_id, $target_id, $source_lang, $target, $memory, $new_memory );
