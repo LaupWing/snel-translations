@@ -29,6 +29,15 @@ class Create {
 	/** Meta key on a translation storing the source signature it was built from. */
 	const HASH_META = '_snel_src_hash';
 
+	/**
+	 * Signature recipe version, embedded in every stored hash ("v2:abc…").
+	 * Bump when source_signature()'s ingredients change. A stored hash from a
+	 * different recipe can't be compared — treat it as unknown (NOT outdated)
+	 * instead of mass-flagging every translation after a plugin update; it gets
+	 * re-stamped with the current recipe on the next create/sync/save.
+	 */
+	const SIG_VERSION = 'v2';
+
 	/** Meta key: translation memory { source text => translated text } for reuse. */
 	const TM_META = '_snel_tm';
 
@@ -116,7 +125,7 @@ class Create {
 			$outdated = false;
 			if ( $sib && $code !== $default_lang && $source_sig ) {
 				$stored   = get_post_meta( $sib, self::HASH_META, true );
-				$outdated = ( $stored !== '' && $stored !== $source_sig );
+				$outdated = self::is_outdated( (string) $stored, $source_sig );
 			}
 
 			$languages[] = [
@@ -516,7 +525,24 @@ class Create {
 		// on the source must mark translations outdated too.
 		$parts[] = (string) get_post_meta( $source_id, '_thumbnail_id', true );
 
-		return md5( implode( "\x1f", $parts ) );
+		return self::SIG_VERSION . ':' . md5( implode( "\x1f", $parts ) );
+	}
+
+	/**
+	 * Whether a stored signature marks a translation outdated vs the current one.
+	 * Empty = never stamped (unknown). Different recipe version = incomparable
+	 * (unknown). Only a same-version mismatch is a real "source changed".
+	 */
+	public static function is_outdated( string $stored, string $current ): bool {
+		if ( '' === $stored || '' === $current ) {
+			return false;
+		}
+		$stored_version  = str_contains( $stored, ':' ) ? strtok( $stored, ':' ) : 'v1';
+		$current_version = strtok( $current, ':' );
+		if ( $stored_version !== $current_version ) {
+			return false;
+		}
+		return $stored !== $current;
 	}
 
 	/** The default-language (source) post id for any post. */

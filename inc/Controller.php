@@ -344,7 +344,7 @@ class Controller {
 					$action = 'create';
 				} else {
 					$stored = get_post_meta( $sib, Create::HASH_META, true );
-					if ( $stored !== '' && $stored !== $sig ) {
+					if ( Create::is_outdated( (string) $stored, $sig ) ) {
 						$action = 'sync';
 					}
 				}
