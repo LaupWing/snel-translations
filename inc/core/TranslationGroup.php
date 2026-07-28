@@ -314,25 +314,38 @@ class TranslationGroup {
 			return;
 		}
 
-		$lang    = $query->get( 'lang' ) ?: LocaleManager::current();
+		$lang = $query->get( 'lang' ) ?: LocaleManager::current();
+
+		$query->set( 'meta_query', self::addLangClause( $query->get( 'meta_query' ), $lang ) );
+	}
+
+	/**
+	 * AND a language clause onto an existing meta_query. The existing query may
+	 * carry its own top-level relation (e.g. OR) — appending into it would make
+	 * the language clause optional, so nest both under an AND instead.
+	 */
+	private static function addLangClause( $meta, string $lang ): array {
 		$default = LocaleManager::default();
 
-		$meta = $query->get( 'meta_query' );
-		if ( ! is_array( $meta ) ) {
-			$meta = [];
-		}
-
 		if ( $lang === $default ) {
-			$meta[] = [
+			$clause = [
 				'relation' => 'OR',
 				[ 'key' => self::META_LANG, 'value' => $default ],
 				[ 'key' => self::META_LANG, 'compare' => 'NOT EXISTS' ],
 			];
 		} else {
-			$meta[] = [ 'key' => self::META_LANG, 'value' => $lang ];
+			$clause = [ 'key' => self::META_LANG, 'value' => $lang ];
 		}
 
-		$query->set( 'meta_query', $meta );
+		if ( ! is_array( $meta ) || empty( $meta ) ) {
+			return [ $clause ];
+		}
+
+		return [
+			'relation' => 'AND',
+			$clause,
+			$meta,
+		];
 	}
 
 	/**
@@ -571,22 +584,6 @@ class TranslationGroup {
 			}
 		}
 
-		$lang    = LocaleManager::current();
-		$default = LocaleManager::default();
-
-		$meta = $query->get( 'meta_query' );
-		if ( ! is_array( $meta ) ) {
-			$meta = [];
-		}
-		if ( $lang === $default ) {
-			$meta[] = [
-				'relation' => 'OR',
-				[ 'key' => self::META_LANG, 'value' => $default ],
-				[ 'key' => self::META_LANG, 'compare' => 'NOT EXISTS' ],
-			];
-		} else {
-			$meta[] = [ 'key' => self::META_LANG, 'value' => $lang ];
-		}
-		$query->set( 'meta_query', $meta );
+		$query->set( 'meta_query', self::addLangClause( $query->get( 'meta_query' ), LocaleManager::current() ) );
 	}
 }
