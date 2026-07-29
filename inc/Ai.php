@@ -177,6 +177,18 @@ class Ai {
 		// Don't set temperature — some newer models reject the parameter.
 		$builder = wp_ai_client_prompt( $prompt );
 
+		// Pin the provider. Left unpinned, the AI Client picks whichever provider
+		// registered first — on SiteGround that is sg-ai-studio, which is not
+		// authenticated for us and answers every request with a 401.
+		$provider = (string) apply_filters( 'snel_ai_provider', 'openai' );
+		if ( '' !== $provider ) {
+			try {
+				$builder = $builder->usingProvider( $provider );
+			} catch ( \Throwable $e ) {
+				self::log( sprintf( 'provider "%s" unavailable (%s) — falling back to the default', $provider, $e->getMessage() ) );
+			}
+		}
+
 		if ( ! $builder->is_supported_for_text_generation() ) {
 			return new \WP_Error( 'snel_ai_no_provider', 'No AI provider configured. Add one under Settings → Connectors.' );
 		}
