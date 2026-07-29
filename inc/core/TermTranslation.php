@@ -99,8 +99,52 @@ class TermTranslation {
 			return $url;
 		}
 
-		// Swap the term's own slug AND every ancestor's slug (hierarchical
-		// taxonomies build nested paths like /producten/parent/child/).
+		return UrlGenerator::url( self::swapSlugs( (string) $url, $term, $taxonomy, $lang ) );
+	}
+
+	/**
+	 * Term URL in an arbitrary language, independent of the language the current
+	 * request is in. The language switcher and the hreflang tags need this: on a
+	 * term archive there is no sibling post to look up, and swapping only the
+	 * URL prefix would keep the source language's slug.
+	 */
+	public static function linkForLang( $term, string $taxonomy, string $lang ): string {
+		if ( ! $term instanceof \WP_Term ) {
+			return '';
+		}
+
+		// get_term_link() runs filterTermLink for the CURRENT language — unhook
+		// it so we start from the plain, unprefixed, default-language URL.
+		remove_filter( 'term_link', [ self::class, 'filterTermLink' ], 10 );
+		$url = get_term_link( $term, $taxonomy );
+		add_filter( 'term_link', [ self::class, 'filterTermLink' ], 10, 3 );
+
+		if ( is_wp_error( $url ) ) {
+			return '';
+		}
+
+		$default = LocaleManager::default();
+		$url     = ( $lang === $default ) ? (string) $url : self::swapSlugs( (string) $url, $term, $taxonomy, $lang );
+
+		if ( $lang === $default ) {
+			return $url;
+		}
+
+		$parsed = wp_parse_url( $url );
+		$path   = $parsed['path'] ?? '/';
+		$base   = isset( $parsed['scheme'], $parsed['host'] )
+			? $parsed['scheme'] . '://' . $parsed['host'] . ( isset( $parsed['port'] ) ? ':' . $parsed['port'] : '' )
+			: '';
+
+		return $base . '/' . $lang . $path;
+	}
+
+	/**
+	 * Replace the term's own slug and every ancestor's slug with their
+	 * translations for $lang. Hierarchical taxonomies build nested paths like
+	 * /producten/parent/child/, so each segment has to be swapped separately.
+	 */
+	private static function swapSlugs( string $url, \WP_Term $term, string $taxonomy, string $lang ): string {
 		$chain = array_merge( [ $term->term_id ], get_ancestors( $term->term_id, $taxonomy, 'taxonomy' ) );
 		foreach ( $chain as $tid ) {
 			$t = get_term( $tid, $taxonomy );
@@ -113,7 +157,7 @@ class TermTranslation {
 			}
 		}
 
-		return UrlGenerator::url( $url );
+		return $url;
 	}
 
 	/**

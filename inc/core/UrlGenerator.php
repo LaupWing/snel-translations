@@ -64,6 +64,18 @@ class UrlGenerator {
 			}
 		}
 
+		// Term archives have no sibling post to look up, and swapPrefix() would
+		// keep the current language's term slug. Rebuild the URL from the term.
+		if ( is_tax() || is_category() || is_tag() ) {
+			$term = get_queried_object();
+			if ( $term instanceof \WP_Term ) {
+				$url = TermTranslation::linkForLang( $term, $term->taxonomy, $target_lang );
+				if ( $url !== '' ) {
+					return $url;
+				}
+			}
+		}
+
 		return self::swapPrefix( $target_lang );
 	}
 
