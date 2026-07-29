@@ -138,8 +138,9 @@ class Router {
 				if ( $tax->name === 'post_format' ) {
 					continue;
 				}
-				$base    = $slug_of( $tax );
-				$qv      = $tax->name === 'category' ? 'category_name' : ( $tax->name === 'post_tag' ? 'tag' : $tax->name );
+				$default_base = $slug_of( $tax );
+				$base         = ! empty( $cpt_slug[ $default_base ][ $lang ] ) ? $cpt_slug[ $default_base ][ $lang ] : $default_base;
+				$qv           = $tax->name === 'category' ? 'category_name' : ( $tax->name === 'post_tag' ? 'tag' : $tax->name );
 				$segment = ( is_array( $tax->rewrite ) && ! empty( $tax->rewrite['hierarchical'] ) ) ? '(.+?)' : '([^/]+)';
 				add_rewrite_rule( "^{$lang}/{$base}/{$segment}/page/([0-9]+)/?$", "index.php?lang={$lang}&{$qv}=\$matches[1]&paged=\$matches[2]", 'top' );
 				add_rewrite_rule( "^{$lang}/{$base}/{$segment}/?$", "index.php?lang={$lang}&{$qv}=\$matches[1]", 'top' );

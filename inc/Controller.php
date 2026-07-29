@@ -258,22 +258,62 @@ class Controller {
 
 	// ─── CPT slug translations ───────────────────────────────────────────────
 
-	/** Public CPTs + default slug + per-language slug (for non-default langs). */
+	/**
+	 * Every translatable URL base segment: custom post types and public
+	 * taxonomies. Both occupy the same position in a URL (/producten/…,
+	 * /merken/…), so they share one config keyed by the default slug.
+	 *
+	 * @return array<int, array{name:string,label:string,slug:string,kind:string}>
+	 */
+	private static function urlBases(): array {
+		$bases = [];
+
+		foreach ( get_post_types( [ 'public' => true, '_builtin' => false ], 'objects' ) as $pt ) {
+			$bases[] = [
+				'name'  => $pt->name,
+				'label' => $pt->labels->singular_name ?? $pt->name,
+				'slug'  => ( is_array( $pt->rewrite ) && ! empty( $pt->rewrite['slug'] ) ) ? $pt->rewrite['slug'] : $pt->name,
+				'kind'  => 'post_type',
+			];
+		}
+
+		foreach ( get_taxonomies( [ 'public' => true ], 'objects' ) as $tax ) {
+			if ( 'post_format' === $tax->name ) {
+				continue;
+			}
+			$bases[] = [
+				'name'  => $tax->name,
+				'label' => $tax->labels->singular_name ?? $tax->name,
+				'slug'  => ( is_array( $tax->rewrite ) && ! empty( $tax->rewrite['slug'] ) ) ? $tax->rewrite['slug'] : $tax->name,
+				'kind'  => 'taxonomy',
+			];
+		}
+
+		return $bases;
+	}
+
+	/** Public CPT + taxonomy bases with their per-language slug translations. */
 	public function cptslugs_get() {
 		$cfg   = UrlGenerator::cptSlugsConfig();
 		$langs = array_values( array_diff( LocaleManager::supported(), [ LocaleManager::default() ] ) );
 		$items = [];
 
-		foreach ( get_post_types( [ 'public' => true, '_builtin' => false ], 'objects' ) as $pt ) {
-			$slug = ( is_array( $pt->rewrite ) && ! empty( $pt->rewrite['slug'] ) ) ? $pt->rewrite['slug'] : $pt->name;
-			$tr   = [];
+		$seen = [];
+		foreach ( self::urlBases() as $base ) {
+			if ( isset( $seen[ $base['slug'] ] ) ) {
+				continue;
+			}
+			$seen[ $base['slug'] ] = true;
+
+			$tr = [];
 			foreach ( $langs as $l ) {
-				$tr[ $l ] = $cfg[ $slug ][ $l ] ?? '';
+				$tr[ $l ] = $cfg[ $base['slug'] ][ $l ] ?? '';
 			}
 			$items[] = [
-				'postType'     => $pt->name,
-				'label'        => $pt->labels->singular_name ?? $pt->name,
-				'defaultSlug'  => $slug,
+				'postType'     => $base['name'],
+				'label'        => $base['label'],
+				'kind'         => $base['kind'],
+				'defaultSlug'  => $base['slug'],
 				'translations' => $tr,
 			];
 		}
@@ -384,7 +424,7 @@ class Controller {
 		return rest_ensure_response( $res );
 	}
 
-	/** AI-suggest a translated slug for every CPT × language. Does not save. */
+	/** AI-suggest a translated slug for every URL base × language. Does not save. */
 	public function cptslugs_translate() {
 		$default = LocaleManager::default();
 		$langs   = array_values( array_diff( LocaleManager::supported(), [ $default ] ) );
@@ -392,10 +432,7 @@ class Controller {
 			return rest_ensure_response( [] );
 		}
 
-		$slugs = [];
-		foreach ( get_post_types( [ 'public' => true, '_builtin' => false ], 'objects' ) as $pt ) {
-			$slugs[] = ( is_array( $pt->rewrite ) && ! empty( $pt->rewrite['slug'] ) ) ? $pt->rewrite['slug'] : $pt->name;
-		}
+		$slugs = array_column( self::urlBases(), 'slug' );
 		$slugs = array_values( array_unique( $slugs ) );
 		if ( empty( $slugs ) ) {
 			return rest_ensure_response( [] );

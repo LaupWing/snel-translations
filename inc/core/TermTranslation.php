@@ -145,6 +145,17 @@ class TermTranslation {
 	 * /producten/parent/child/, so each segment has to be swapped separately.
 	 */
 	private static function swapSlugs( string $url, \WP_Term $term, string $taxonomy, string $lang ): string {
+		// The taxonomy's own base segment (e.g. /producten/) is shared by every
+		// term, so it comes from the base-slug config rather than term meta.
+		$tax_obj = get_taxonomy( $taxonomy );
+		if ( $tax_obj ) {
+			$base = ( is_array( $tax_obj->rewrite ) && ! empty( $tax_obj->rewrite['slug'] ) ) ? $tax_obj->rewrite['slug'] : $tax_obj->name;
+			$cfg  = UrlGenerator::cptSlugsConfig();
+			if ( ! empty( $cfg[ $base ][ $lang ] ) && $cfg[ $base ][ $lang ] !== $base ) {
+				$url = preg_replace( '#/' . preg_quote( $base, '#' ) . '(/|$)#', '/' . $cfg[ $base ][ $lang ] . '$1', $url, 1 );
+			}
+		}
+
 		$chain = array_merge( [ $term->term_id ], get_ancestors( $term->term_id, $taxonomy, 'taxonomy' ) );
 		foreach ( $chain as $tid ) {
 			$t = get_term( $tid, $taxonomy );
