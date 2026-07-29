@@ -205,6 +205,24 @@ class Ai {
 			return new \WP_Error( 'snel_ai_failed', 'AI request failed: ' . $output->get_error_message() );
 		}
 
+		// Some providers hand back a transport error as plain text instead of a
+		// WP_Error. Left unchecked it gets split as if it were a translation and
+		// surfaces as a baffling "count mismatch" — report the real cause.
+		$raw = trim( (string) $output );
+		if ( preg_match( '/^Unexpected response code:\s*(\d{3})/i', $raw, $m ) ) {
+			$code = (int) $m[1];
+			if ( 401 === $code || 403 === $code ) {
+				return new \WP_Error(
+					'snel_ai_auth',
+					sprintf(
+						'AI provider rejected the credentials (HTTP %d). Check the API key under Settings → Connectors.',
+						$code
+					)
+				);
+			}
+			return new \WP_Error( 'snel_ai_failed', 'AI request failed: ' . $raw );
+		}
+
 		$translations = array_map(
 			function ( $part ) { return trim( $part, "\r\n" ); },
 			explode( $delim, (string) $output )
