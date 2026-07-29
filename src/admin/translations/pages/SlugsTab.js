@@ -1,5 +1,5 @@
 import { useState, useEffect } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 import { Languages } from 'lucide-react';
 import TabHeader from '../components/TabHeader';
 import Btn from '../components/Btn';
@@ -41,7 +41,12 @@ export default function SlugsTab() {
             } );
             const suggestions = await res.json();
             if ( ! suggestions || suggestions.code ) {
-                setStatus( __( 'Translation failed.', 'snel' ) );
+                const detail = suggestions?.message || suggestions?.code;
+                setStatus(
+                    detail
+                        ? sprintf( __( 'Translation failed: %s', 'snel' ), detail )
+                        : __( 'Translation failed.', 'snel' )
+                );
             } else {
                 setData( ( prev ) => ( {
                     ...prev,
@@ -59,7 +64,7 @@ export default function SlugsTab() {
                 setStatus( __( 'Filled — review, then Save.', 'snel' ) );
             }
         } catch ( e ) {
-            setStatus( __( 'Request failed.', 'snel' ) );
+            setStatus( sprintf( __( 'Request failed: %s', 'snel' ), e.message ) );
         }
         setTranslating( false );
     };
