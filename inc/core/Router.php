@@ -32,7 +32,7 @@ class Router {
 		add_action( 'template_redirect', [ self::class, 'canonicalizeSwappedSlug' ], 9 ); // before redirect_canonical (10)
 
 		// Force one flush after deploy if the rules are stale.
-		$rules_version = 'snel_rewrite_v9';
+		$rules_version = 'snel_rewrite_v10';
 		if ( get_option( $rules_version ) !== '1' ) {
 			add_action( 'init', function () use ( $rules_version ) {
 				flush_rewrite_rules();
@@ -142,6 +142,14 @@ class Router {
 				$base         = ! empty( $cpt_slug[ $default_base ][ $lang ] ) ? $cpt_slug[ $default_base ][ $lang ] : $default_base;
 				$qv           = $tax->name === 'category' ? 'category_name' : ( $tax->name === 'post_tag' ? 'tag' : $tax->name );
 				$segment = ( is_array( $tax->rewrite ) && ! empty( $tax->rewrite['hierarchical'] ) ) ? '(.+?)' : '([^/]+)';
+
+				// A taxonomy base can be the slug of a real page — the category
+				// base "blog" sitting on the posts page at /blog/ is the common
+				// one. Core survives that with verbose page rules; here the term
+				// rule below would swallow /en/blog/page/2/ as the term
+				// "page/2". Claim base pagination for the page first.
+				add_rewrite_rule( "^{$lang}/{$base}/page/([0-9]+)/?$", "index.php?lang={$lang}&pagename={$base}&paged=\$matches[1]", 'top' );
+
 				add_rewrite_rule( "^{$lang}/{$base}/{$segment}/page/([0-9]+)/?$", "index.php?lang={$lang}&{$qv}=\$matches[1]&paged=\$matches[2]", 'top' );
 				add_rewrite_rule( "^{$lang}/{$base}/{$segment}/?$", "index.php?lang={$lang}&{$qv}=\$matches[1]", 'top' );
 			}
