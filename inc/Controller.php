@@ -293,6 +293,90 @@ class Controller {
 	}
 
 	/** Public CPT + taxonomy bases with their per-language slug translations. */
+	// ─── Media alt text ──────────────────────────────────────────────────────
+
+	/**
+	 * Scopes for the media batch wizard: every post type that actually has
+	 * images attached, with its count.
+	 *
+	 * Deliberately not using /wp/v2/types — post types registered with
+	 * show_in_rest=false (products here) are missing from it entirely.
+	 */
+	public function media_scopes_get() {
+		$langs   = array_values( array_diff( LocaleManager::supported(), [ LocaleManager::default() ] ) );
+		$counts  = Model::imageCountsByParentType();
+		$backlog = Model::imageBacklogByParentType( $langs );
+		$scopes  = [];
+
+		foreach ( $counts['types'] as $slug => $count ) {
+			// 'attachment' turns up when an image's parent is another image —
+			// not a scope anyone wants to caption.
+			if ( 'attachment' === $slug ) {
+				continue;
+			}
+			$obj = get_post_type_object( $slug );
+			if ( ! $obj || ! $obj->public ) {
+				continue;
+			}
+			$scopes[] = [
+				'id'           => $slug,
+				'label'        => $obj->labels->name ?? $slug,
+				'count'        => $count,
+				'noAlt'        => $backlog['noAlt'][ $slug ] ?? 0,
+				'missingTrans' => $backlog['missingTrans'][ $slug ] ?? 0,
+			];
+		}
+
+		// Biggest first — that's the one people want.
+		usort( $scopes, fn( $a, $b ) => $b['count'] <=> $a['count'] );
+
+		if ( $counts['unattached'] > 0 ) {
+			$scopes[] = [
+				'id'           => 'unattached',
+				'label'        => __( 'Unattached', 'snel' ),
+				'count'        => $counts['unattached'],
+				'noAlt'        => $backlog['noAlt']['unattached'] ?? 0,
+				'missingTrans' => $backlog['missingTrans']['unattached'] ?? 0,
+			];
+		}
+
+		return rest_ensure_response( [
+			'scopes'       => $scopes,
+			'total'        => $counts['total'],
+			'noAlt'        => $backlog['noAltTotal'],
+			'missingTrans' => $backlog['missingTransTotal'],
+			'langs'        => $langs,
+		] );
+	}
+
+	/** Paginated image list with the per-language alt text for each row. */
+	public function media_list_get( \WP_REST_Request $request ) {
+		$scope    = (string) ( $request->get_param( 'scope' ) ?: 'all' );
+		$page     = max( 1, (int) $request->get_param( 'page' ) );
+		$per_page = min( 100, max( 1, (int) ( $request->get_param( 'per_page' ) ?: 20 ) ) );
+		$search   = trim( (string) $request->get_param( 'search' ) );
+
+		$result = Model::imageRows( $scope, $page, $per_page, $search );
+		$langs  = array_values( array_diff( LocaleManager::supported(), [ LocaleManager::default() ] ) );
+
+		$rows = array_map( function ( $row ) use ( $langs ) {
+			$translations = [];
+			foreach ( $langs as $lang ) {
+				$translations[ $lang ] = (string) get_post_meta( $row['id'], '_snel_alt_' . $lang, true );
+			}
+			$row['translations'] = $translations;
+			return $row;
+		}, $result['rows'] );
+
+		return rest_ensure_response( [
+			'rows'       => $rows,
+			'total'      => $result['total'],
+			'totalPages' => (int) ceil( $result['total'] / $per_page ),
+			'page'       => $page,
+			'langs'      => $langs,
+		] );
+	}
+
 	public function cptslugs_get() {
 		$cfg   = UrlGenerator::cptSlugsConfig();
 		$langs = array_values( array_diff( LocaleManager::supported(), [ LocaleManager::default() ] ) );

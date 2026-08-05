@@ -50,6 +50,9 @@ class Rest {
 		$this->route( '/cpt-slugs', 'POST', [ $c, 'cptslugs_save' ], $perm );
 		$this->route( '/cpt-slugs/translate', 'POST', [ $c, 'cptslugs_translate' ], $perm );
 
+		$this->route( '/media/scopes', 'GET', [ $c, 'media_scopes_get' ], $perm );
+		$this->route( '/media/list',   'GET', [ $c, 'media_list_get' ],   $perm );
+
 		$this->route( '/bulk/plan', 'GET',  [ $c, 'bulk_plan' ], $perm );
 		$this->route( '/bulk/run',  'POST', [ $c, 'bulk_run' ],  $perm );
 	}

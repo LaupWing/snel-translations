@@ -205,4 +205,189 @@ class Model {
 	public static function saveCptSlugs( array $map ): void {
 		update_option( 'snel_cpt_slugs', $map );
 	}
+
+	// ─── Media alt text ──────────────────────────────────────────────────────
+
+	/**
+	 * Image counts per parent post type, plus totals.
+	 *
+	 * The core media route can't do this — it has no filter for "attachments
+	 * whose parent is of type X" — and CPTs registered with show_in_rest=false
+	 * aren't in /wp/v2/types at all. Hence a direct query.
+	 *
+	 * @return array{types:array<string,int>,total:int,unattached:int}
+	 */
+	public static function imageCountsByParentType(): array {
+		global $wpdb;
+
+		$rows = $wpdb->get_results(
+			"SELECT parent.post_type AS post_type, COUNT(*) AS n
+			 FROM {$wpdb->posts} a
+			 INNER JOIN {$wpdb->posts} parent ON parent.ID = a.post_parent
+			 WHERE a.post_type = 'attachment'
+			 AND a.post_mime_type LIKE 'image/%'
+			 GROUP BY parent.post_type",
+			ARRAY_A
+		);
+
+		$types = [];
+		foreach ( $rows as $row ) {
+			$types[ $row['post_type'] ] = (int) $row['n'];
+		}
+
+		$total = (int) $wpdb->get_var(
+			"SELECT COUNT(*) FROM {$wpdb->posts}
+			 WHERE post_type = 'attachment' AND post_mime_type LIKE 'image/%'"
+		);
+
+		$unattached = (int) $wpdb->get_var(
+			"SELECT COUNT(*) FROM {$wpdb->posts}
+			 WHERE post_type = 'attachment' AND post_mime_type LIKE 'image/%'
+			 AND ( post_parent = 0 OR post_parent IS NULL )"
+		);
+
+		return [ 'types' => $types, 'total' => $total, 'unattached' => $unattached ];
+	}
+
+	/**
+	 * Backlog per parent post type: how many images still need work.
+	 *
+	 * Two different numbers, because the two jobs have different backlogs:
+	 *   noAlt        — no source alt at all, so vision has to look at the image
+	 *   missingTrans — has a source alt but at least one language is empty
+	 *
+	 * @param string[] $langs Non-default language codes.
+	 * @return array{noAlt:array<string,int>,missingTrans:array<string,int>,noAltTotal:int,missingTransTotal:int}
+	 */
+	public static function imageBacklogByParentType( array $langs ): array {
+		global $wpdb;
+
+		// Images whose alt meta is absent or empty.
+		$no_alt_rows = $wpdb->get_results(
+			"SELECT COALESCE(parent.post_type, 'unattached') AS post_type, COUNT(*) AS n
+			 FROM {$wpdb->posts} a
+			 LEFT JOIN {$wpdb->posts} parent ON parent.ID = a.post_parent
+			 LEFT JOIN {$wpdb->postmeta} alt
+			        ON alt.post_id = a.ID AND alt.meta_key = '_wp_attachment_image_alt'
+			 WHERE a.post_type = 'attachment'
+			 AND a.post_mime_type LIKE 'image/%'
+			 AND ( alt.meta_value IS NULL OR alt.meta_value = '' )
+			 GROUP BY COALESCE(parent.post_type, 'unattached')",
+			ARRAY_A
+		);
+
+		$no_alt = [];
+		foreach ( $no_alt_rows as $row ) {
+			$no_alt[ $row['post_type'] ] = (int) $row['n'];
+		}
+
+		// Images with a source alt but fewer than one translation per language.
+		$missing = [];
+		if ( $langs ) {
+			$keys         = array_map( fn( $l ) => '_snel_alt_' . $l, $langs );
+			$placeholders = implode( ', ', array_fill( 0, count( $keys ), '%s' ) );
+
+			$missing_rows = $wpdb->get_results( $wpdb->prepare(
+				"SELECT COALESCE(parent.post_type, 'unattached') AS post_type, COUNT(*) AS n
+				 FROM (
+				   SELECT a.ID, a.post_parent,
+				          ( SELECT COUNT(*) FROM {$wpdb->postmeta} tm
+				            WHERE tm.post_id = a.ID
+				            AND tm.meta_key IN ( {$placeholders} )
+				            AND tm.meta_value <> '' ) AS done
+				   FROM {$wpdb->posts} a
+				   INNER JOIN {$wpdb->postmeta} alt
+				           ON alt.post_id = a.ID
+				          AND alt.meta_key = '_wp_attachment_image_alt'
+				          AND alt.meta_value <> ''
+				   WHERE a.post_type = 'attachment'
+				   AND a.post_mime_type LIKE 'image/%'
+				 ) x
+				 LEFT JOIN {$wpdb->posts} parent ON parent.ID = x.post_parent
+				 WHERE x.done < %d
+				 GROUP BY COALESCE(parent.post_type, 'unattached')",
+				...array_merge( $keys, [ count( $langs ) ] )
+			), ARRAY_A );
+
+			foreach ( $missing_rows as $row ) {
+				$missing[ $row['post_type'] ] = (int) $row['n'];
+			}
+		}
+
+		return [
+			'noAlt'             => $no_alt,
+			'missingTrans'      => $missing,
+			'noAltTotal'        => array_sum( $no_alt ),
+			'missingTransTotal' => array_sum( $missing ),
+		];
+	}
+
+	/**
+	 * Paginated image rows, optionally scoped to a parent post type.
+	 *
+	 * @param string $parent_type Post type slug, 'all', or 'unattached'.
+	 * @param int    $page        1-based.
+	 * @param int    $per_page    Rows per page.
+	 * @param string $search      Matches alt text, title or filename.
+	 * @return array{rows:array<int,array>,total:int}
+	 */
+	public static function imageRows( string $parent_type, int $page, int $per_page, string $search = '' ): array {
+		global $wpdb;
+
+		$join  = '';
+		$where = [ "a.post_type = 'attachment'", "a.post_mime_type LIKE 'image/%'" ];
+		$args  = [];
+
+		if ( 'unattached' === $parent_type ) {
+			$where[] = '( a.post_parent = 0 OR a.post_parent IS NULL )';
+		} elseif ( 'all' !== $parent_type ) {
+			$join    = "INNER JOIN {$wpdb->posts} parent ON parent.ID = a.post_parent";
+			$where[] = 'parent.post_type = %s';
+			$args[]  = $parent_type;
+		}
+
+		if ( '' !== $search ) {
+			$like    = '%' . $wpdb->esc_like( $search ) . '%';
+			$join   .= " LEFT JOIN {$wpdb->postmeta} altm ON altm.post_id = a.ID AND altm.meta_key = '_wp_attachment_image_alt'";
+			$where[] = '( a.post_title LIKE %s OR altm.meta_value LIKE %s )';
+			$args[]  = $like;
+			$args[]  = $like;
+		}
+
+		$where_sql = implode( ' AND ', $where );
+
+		$count_sql = "SELECT COUNT(DISTINCT a.ID) FROM {$wpdb->posts} a {$join} WHERE {$where_sql}";
+		$total     = (int) ( $args
+			? $wpdb->get_var( $wpdb->prepare( $count_sql, ...$args ) )
+			: $wpdb->get_var( $count_sql ) );
+
+		$offset    = max( 0, ( $page - 1 ) * $per_page );
+		$page_args = array_merge( $args, [ $per_page, $offset ] );
+
+		$ids = $wpdb->get_col( $wpdb->prepare(
+			"SELECT DISTINCT a.ID FROM {$wpdb->posts} a {$join}
+			 WHERE {$where_sql}
+			 ORDER BY a.ID DESC
+			 LIMIT %d OFFSET %d",
+			...$page_args
+		) );
+
+		$rows = [];
+		foreach ( $ids as $id ) {
+			$id     = (int) $id;
+			$parent = (int) get_post_field( 'post_parent', $id );
+
+			$rows[] = [
+				'id'         => $id,
+				'title'      => get_the_title( $id ),
+				'thumb'      => wp_get_attachment_image_url( $id, 'thumbnail' ) ?: wp_get_attachment_url( $id ),
+				'alt'        => (string) get_post_meta( $id, '_wp_attachment_image_alt', true ),
+				'parentId'   => $parent,
+				'parentTitle'=> $parent ? get_the_title( $parent ) : '',
+				'parentType' => $parent ? (string) get_post_field( 'post_type', $parent ) : '',
+			];
+		}
+
+		return [ 'rows' => $rows, 'total' => $total ];
+	}
 }

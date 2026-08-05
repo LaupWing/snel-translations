@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import EditableCell from '../components/EditableCell';
 import Btn from '../components/Btn';
+import MediaBatchModal from './MediaBatchModal';
 
 /**
  * Alt text per language, on one attachment.
@@ -32,9 +33,10 @@ export default function MediaTab() {
     ];
     const defaultLang = window.snelTranslations?.defaultLang || 'nl';
     const nonDefaultLangs = languages.filter( ( l ) => ! l.default );
-    const nonce = window.snelTranslations?.nonce || window.wpApiSettings?.nonce || '';
-    const apiRoot = window.wpApiSettings?.root || `${ window.location.origin }/wp-json/`;
+    const cfg = window.snelTranslations || {};
 
+    const [ scope, setScope ] = useState( 'all' );
+    const [ scopes, setScopes ] = useState( [] );
     const [ rows, setRows ] = useState( [] );
     const [ loading, setLoading ] = useState( true );
     const [ page, setPage ] = useState( 1 );
@@ -46,6 +48,7 @@ export default function MediaTab() {
     const [ translating, setTranslating ] = useState( null );
     const [ describing, setDescribing ] = useState( null );
     const [ notice, setNotice ] = useState( null );
+    const [ batchOpen, setBatchOpen ] = useState( false );
 
     // Debounce the search box into the query actually sent to the API.
     useEffect( () => {
@@ -56,45 +59,52 @@ export default function MediaTab() {
         return () => window.clearTimeout( t );
     }, [ searchQuery ] );
 
+    // Scope list — products are invisible to /wp/v2/types, so this comes from
+    // our own endpoint together with the per-type counts.
+    useEffect( () => {
+        fetch( `${ cfg.restUrl }/media/scopes`, { headers: { 'X-WP-Nonce': cfg.nonce } } )
+            .then( ( r ) => r.json() )
+            .then( ( data ) => setScopes( [
+                { id: 'all', label: __( 'All images', 'snel' ), count: data.total ?? 0 },
+                ...( data.scopes || [] ),
+            ] ) )
+            .catch( () => {} );
+    }, [] );
+
     useEffect( () => {
         let cancelled = false;
         setLoading( true );
 
         const params = new URLSearchParams( {
-            media_type: 'image',
-            per_page: String( PER_PAGE ),
+            scope,
             page: String( page ),
-            orderby: 'date',
-            order: 'desc',
-            _fields: 'id,alt_text,source_url,media_details,title,post',
+            per_page: String( PER_PAGE ),
         } );
         if ( search ) {
             params.set( 'search', search );
         }
 
-        fetch( `${ apiRoot }wp/v2/media?${ params.toString() }`, {
-            headers: nonce ? { 'X-WP-Nonce': nonce } : {},
+        fetch( `${ cfg.restUrl }/media/list?${ params.toString() }`, {
+            headers: { 'X-WP-Nonce': cfg.nonce },
         } )
-            .then( ( res ) => {
-                setTotalPages( Number( res.headers.get( 'X-WP-TotalPages' ) || 1 ) );
-                setTotalImages( Number( res.headers.get( 'X-WP-Total' ) || 0 ) );
-                return res.json();
-            } )
+            .then( ( r ) => r.json() )
             .then( ( data ) => {
                 if ( cancelled ) return;
-                if ( ! Array.isArray( data ) ) {
+                if ( ! data || ! Array.isArray( data.rows ) ) {
                     setNotice( { type: 'error', message: __( 'Could not load media.', 'snel' ) } );
                     setRows( [] );
                     setLoading( false );
                     return;
                 }
-                setRows( data.map( ( m ) => ( {
+                setTotalPages( data.totalPages || 1 );
+                setTotalImages( data.total || 0 );
+                setRows( data.rows.map( ( m ) => ( {
                     id: m.id,
-                    source: m.alt_text || '',
-                    file: m.title?.rendered || '',
-                    thumb: m.media_details?.sizes?.thumbnail?.source_url || m.source_url,
-                    // No endpoint yet — translations start empty.
-                    langs: Object.fromEntries( nonDefaultLangs.map( ( l ) => [ l.code, '' ] ) ),
+                    source: m.alt || '',
+                    file: m.title || '',
+                    usedIn: m.parentTitle || '',
+                    thumb: m.thumb || '',
+                    langs: m.translations || {},
                 } ) ) );
                 setLoading( false );
             } )
@@ -105,7 +115,10 @@ export default function MediaTab() {
             } );
 
         return () => { cancelled = true; };
-    }, [ page, search ] );
+    }, [ page, search, scope ] );
+
+    // Reset to page 1 whenever the scope changes.
+    useEffect( () => setPage( 1 ), [ scope ] );
 
     const update = ( id, lang, value ) => {
         setRows( ( prev ) => prev.map( ( r ) => (
@@ -165,7 +178,9 @@ export default function MediaTab() {
 
     return (
         <div>
-            <div className="flex items-center justify-between mb-4">
+            { batchOpen && <MediaBatchModal onClose={ () => setBatchOpen( false ) } /> }
+
+            <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
                     <span className="text-sm text-gray-500">
                         { totalImages.toLocaleString() } { __( 'images', 'snel' ) }
@@ -182,6 +197,19 @@ export default function MediaTab() {
                     ) }
                 </div>
                 <div className="flex items-center gap-3">
+                    { scopes.length > 1 && (
+                        <select
+                            value={ scope }
+                            onChange={ ( e ) => setScope( e.target.value ) }
+                            className="text-sm border border-gray-300 rounded-md px-2 py-1.5 bg-white"
+                        >
+                            { scopes.map( ( s ) => (
+                                <option key={ s.id } value={ s.id }>
+                                    { s.label } ({ Number( s.count ).toLocaleString() })
+                                </option>
+                            ) ) }
+                        </select>
+                    ) }
                     <div className="relative">
                         <Search size={ 14 } className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
@@ -192,19 +220,18 @@ export default function MediaTab() {
                             className="pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-blue-500 focus:shadow-[0_0_0_1px_#3b82f6] w-56"
                         />
                     </div>
-                    <Btn
-                        variant="ai"
-                        icon={ Languages }
-                        busy={ translating === 'all' }
-                        disabled={ !! translating }
-                        onClick={ () => handleTranslate( 'all' ) }
-                    >
-                        { __( 'Re-translate All', 'snel' ) }
-                    </Btn>
-                    <Btn variant="primary" icon={ Save } busy={ saving } onClick={ handleSave }>
-                        { saving ? __( 'Saving...', 'snel' ) : __( 'Save Translations', 'snel' ) }
-                    </Btn>
                 </div>
+            </div>
+
+            { /* Actions on their own row — filters plus both buttons don't fit
+                 on one line once the language columns are wide. */ }
+            <div className="flex items-center justify-end gap-3 mb-4">
+                <Btn variant="ai" icon={ Languages } onClick={ () => setBatchOpen( true ) }>
+                    { __( 'Re-translate All', 'snel' ) }
+                </Btn>
+                <Btn variant="primary" icon={ Save } busy={ saving } onClick={ handleSave }>
+                    { saving ? __( 'Saving...', 'snel' ) : __( 'Save Translations', 'snel' ) }
+                </Btn>
             </div>
 
             { notice && (
@@ -274,6 +301,7 @@ export default function MediaTab() {
                                         ) }
                                         <div className="text-xs text-gray-400 mt-0.5 truncate px-2.5">
                                             { row.file }
+                                            { row.usedIn && <span className="text-gray-300"> · { row.usedIn }</span> }
                                         </div>
                                     </div>
                                 </div>
