@@ -16,6 +16,7 @@ export default function SettingsTab() {
     const [ enabled, setEnabled ] = useState(
         langs.filter( ( l ) => l.enabled ).map( ( l ) => l.code )
     );
+    const [ redirects, setRedirects ] = useState( data.disabledRedirects || {} );
     const [ busy, setBusy ] = useState( false );
     const [ status, setStatus ] = useState( '' );
 
@@ -103,16 +104,31 @@ export default function SettingsTab() {
         e.target.value = ''; // allow re-importing the same file
     };
 
-    const saveJson = async () => {
+    const saveJson = async ( force = false ) => {
         setJsonBusy( true );
         setJsonStatus( '' );
         try {
             const res = await fetch( `${ data.restUrl }/languages-config`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': data.nonce },
-                body: JSON.stringify( { json } ),
+                body: JSON.stringify( force ? { json, force: true } : { json } ),
             } );
             const j = await res.json();
+            if ( j && j.needsConfirm ) {
+                // Removed languages still have content — spell it out before orphaning.
+                const lines = Object.entries( j.inUse || {} )
+                    .map( ( [ code, n ] ) => `${ code.toUpperCase() }: ${ n } ${ __( 'posts', 'snel' ) }` )
+                    .join( '\n' );
+                setJsonBusy( false );
+                if ( window.confirm(
+                    __( 'These languages still have translations:', 'snel' ) + '\n\n' + lines + '\n\n'
+                    + __( 'Removing them orphans that content (it stays in the database but disappears from every list). Continue?', 'snel' )
+                ) ) {
+                    return saveJson( true );
+                }
+                setJsonStatus( __( 'Cancelled.', 'snel' ) );
+                return;
+            }
             if ( j && j.success ) {
                 setJsonStatus( __( 'Saved. Reload the page to apply.', 'snel' ) );
             } else {
@@ -142,7 +158,7 @@ export default function SettingsTab() {
             const res = await fetch( `${ data.restUrl }/settings`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': data.nonce },
-                body: JSON.stringify( { defaultLang, enabledLangs } ),
+                body: JSON.stringify( { defaultLang, enabledLangs, disabledRedirects: redirects } ),
             } );
             const json = await res.json();
             setStatus( json && json.success ? __( 'Saved.', 'snel' ) : __( 'Could not save.', 'snel' ) );
@@ -156,6 +172,23 @@ export default function SettingsTab() {
     const defaultOptions = langs
         .filter( ( l ) => isOn( l.code ) )
         .map( ( l ) => ( { label: l.label, value: l.code } ) );
+
+    const disabledLangs = langs.filter( ( l ) => ! isOn( l.code ) );
+
+    const defaultLabel = ( langs.find( ( l ) => l.code === defaultLang ) || {} ).label || defaultLang;
+
+    const setRedirect = ( code, target ) => {
+        setRedirects( ( prev ) => {
+            const next = { ...prev };
+            if ( target ) {
+                next[ code ] = target;
+            } else {
+                delete next[ code ];
+            }
+            return next;
+        } );
+    };
+
 
     return (
         <div className="max-w-xl">
@@ -198,6 +231,40 @@ export default function SettingsTab() {
                     { __( 'Turn languages on/off. The default (source) language is always on. Add or edit the language list in the JSON editor below.', 'snel' ) }
                 </p>
             </div>
+
+            {/* Disabled languages: redirect target */}
+            { disabledLangs.length > 0 && (
+                <div className="mb-6">
+                    <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                        { __( 'Disabled languages', 'snel' ) }
+                    </p>
+                    <div className="border border-gray-200 rounded divide-y divide-gray-100">
+                        { disabledLangs.map( ( l ) => (
+                            <div key={ l.code } className="flex items-center gap-3 px-3 py-2 text-sm">
+                                <strong className="w-10">{ l.label }</strong>
+                                <label className="flex items-center gap-2 text-xs text-gray-500">
+                                    { __( 'Redirect to', 'snel' ) }
+                                    <select
+                                        value={ redirects[ l.code ] || '' }
+                                        onChange={ ( e ) => setRedirect( l.code, e.target.value ) }
+                                        className="text-xs"
+                                    >
+                                        <option value="">{ `${ defaultLabel } (${ __( 'default', 'snel' ) })` }</option>
+                                        { langs
+                                            .filter( ( o ) => isOn( o.code ) && o.code !== defaultLang )
+                                            .map( ( o ) => (
+                                                <option key={ o.code } value={ o.code }>{ o.label }</option>
+                                            ) ) }
+                                    </select>
+                                </label>
+                            </div>
+                        ) ) }
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">
+                        { __( 'Old URLs of a disabled language 301-redirect to the chosen language (single pages land on their translation when it exists). Save to apply.', 'snel' ) }
+                    </p>
+                </div>
+            ) }
 
             {/* Default language */}
             <SelectControl
@@ -268,6 +335,7 @@ export default function SettingsTab() {
                         <p className="text-xs text-gray-400 mt-2">
                             { __( 'Format: { "nl": { "label": "NL", "locale": "nl_NL", "default": true }, "en": { "label": "EN", "locale": "en_US" } }. Exactly one language must be "default": true. Clear the box and save to revert to the theme default.', 'snel' ) }
                         </p>
+
                     </div>
                 ) }
             </div>

@@ -57,7 +57,7 @@ async function translateTexts( items, sourceLang, onProgress ) {
 export default function TranslationGrid( { dataKey, initialSearch = '' } ) {
     const languages = window.snelTranslations?.languages || [];
     const defaultLang = window.snelTranslations?.defaultLang || 'nl';
-    const nonDefaultLangs = languages.filter( ( l ) => ! l.default );
+    const nonDefaultLangs = languages.filter( ( l ) => ! l.default && l.enabled !== false );
 
     const [ grouped, setGrouped ] = useState( () => window.snelTranslations?.[ dataKey ] || {} );
     const [ saving, setSaving ] = useState( false );

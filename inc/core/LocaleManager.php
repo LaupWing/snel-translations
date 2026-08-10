@@ -106,6 +106,28 @@ class LocaleManager {
 	}
 
 	/**
+	 * Redirect map for disabled languages: [ 'es' => 'en' ]. A visitor hitting a
+	 * disabled language's URL is 301'd to this target instead of the default.
+	 * Only entries whose target is currently enabled count.
+	 */
+	public static function redirectTargets(): array {
+		$map = get_option( 'snel_disabled_redirects', [] );
+		return is_array( $map ) ? $map : [];
+	}
+
+	/**
+	 * Where a disabled language's traffic should land: the admin-chosen target
+	 * if it's still enabled, the default language otherwise.
+	 */
+	public static function redirectTarget( string $lang ): string {
+		$target = self::redirectTargets()[ $lang ] ?? '';
+		if ( $target && $target !== $lang && in_array( $target, self::supported(), true ) ) {
+			return $target;
+		}
+		return self::default();
+	}
+
+	/**
 	 * The default language code. Admin choice (snel_default_lang) wins over the
 	 * config's `default => true` flag; falls back to the first configured lang.
 	 */

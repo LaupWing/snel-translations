@@ -97,6 +97,26 @@ class Controller {
 			return new \WP_Error( 'default_count', 'Exactly one language must have "default": true.', [ 'status' => 400 ] );
 		}
 
+		// Removing a language whose translations still exist orphans those posts.
+		// Surface it and let the UI ask for an explicit confirm (force=true).
+		$removed = array_diff( array_keys( LocaleManager::config() ), array_keys( $decoded ) );
+		if ( ! empty( $removed ) && ! (bool) $request->get_param( 'force' ) ) {
+			$in_use = [];
+			foreach ( $removed as $code ) {
+				$count = count( Model::postIdsInLang( $code ) );
+				if ( $count > 0 ) {
+					$in_use[ $code ] = $count;
+				}
+			}
+			if ( ! empty( $in_use ) ) {
+				return rest_ensure_response( [
+					'success'      => false,
+					'needsConfirm' => true,
+					'inUse'        => $in_use,
+				] );
+			}
+		}
+
 		Model::saveLanguagesJson( wp_json_encode( $decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
 		flush_rewrite_rules();
 
@@ -131,6 +151,26 @@ class Controller {
 
 		Model::saveDefaultLang( $new_default );
 		Model::saveEnabledLangs( $enabled );
+
+		// Optional per-disabled-language redirect target ({ es: 'en' }). Only
+		// entries pointing at an enabled language are kept; everything else
+		// falls back to the default language at request time.
+		$redirects_in = $request->get_param( 'disabledRedirects' );
+		if ( is_array( $redirects_in ) ) {
+			$map = [];
+			foreach ( $redirects_in as $lang => $target ) {
+				$lang   = sanitize_text_field( (string) $lang );
+				$target = sanitize_text_field( (string) $target );
+				if (
+					array_key_exists( $lang, $config ) && ! in_array( $lang, $enabled, true )
+					&& $target !== '' && $target !== $lang && in_array( $target, $enabled, true )
+				) {
+					$map[ $lang ] = $target;
+				}
+			}
+			Model::saveDisabledRedirects( $map );
+		}
+
 		flush_rewrite_rules();
 
 		return rest_ensure_response( [ 'success' => true ] );

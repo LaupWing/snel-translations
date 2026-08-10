@@ -29,6 +29,7 @@ class Router {
 		add_filter( 'option_page_for_posts', [ self::class, 'filterPostsPageId' ] );
 		add_filter( 'option_page_on_front', [ self::class, 'filterFrontPageId' ] );
 		add_filter( 'redirect_canonical', [ self::class, 'fixCanonicalRedirect' ], 10, 2 );
+		add_action( 'template_redirect', [ self::class, 'redirectDisabledLanguage' ], 1 ); // before the canonical handlers
 		add_action( 'template_redirect', [ self::class, 'canonicalizeSwappedSlug' ], 9 ); // before redirect_canonical (10)
 
 		// Force one flush after deploy if the rules are stale.
@@ -257,6 +258,71 @@ class Router {
 	}
 
 	/**
+	 * 301 a disabled language's URLs to a live language. The rewrite rules for a
+	 * disabled language are gone, so /es/… would 404 cold — instead send the
+	 * visitor to the admin-chosen redirect target (or the default language).
+	 * Singles land on the target-language sibling when one is published; anything
+	 * else lands on the target language's home.
+	 */
+	public static function redirectDisabledLanguage(): void {
+		if ( is_admin() || is_preview() || is_feed() || is_embed() ) {
+			return;
+		}
+
+		$req_path  = (string) wp_parse_url( $_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH );
+		$home_path = trim( (string) wp_parse_url( home_url( '/' ), PHP_URL_PATH ), '/' );
+		$path      = trim( $req_path, '/' );
+		if ( $home_path !== '' && strpos( $path, $home_path ) === 0 ) {
+			$path = trim( substr( $path, strlen( $home_path ) ), '/' );
+		}
+
+		$segs  = explode( '/', $path );
+		$first = $segs[0] ?? '';
+		if ( $first === '' || ! preg_match( '/^[a-z]{2}(-[a-z]{2})?$/i', $first ) ) {
+			return;
+		}
+		if ( in_array( $first, LocaleManager::supported(), true ) ) {
+			return; // live language — normal routing
+		}
+		// Only claim prefixes that are (or were) actually a language here: still
+		// in the config, or carrying a redirect choice. A random /xx/ stays a 404.
+		if ( ! isset( LocaleManager::config()[ $first ] ) && ! isset( LocaleManager::redirectTargets()[ $first ] ) ) {
+			return;
+		}
+
+		$target = LocaleManager::redirectTarget( $first );
+
+		// Single content: try the target-language sibling of the requested post.
+		$dest = '';
+		$slug = sanitize_title( end( $segs ) );
+		if ( count( $segs ) > 1 && $slug !== '' ) {
+			$found = get_posts( [
+				'name'        => $slug,
+				'post_type'   => 'any',
+				'post_status' => 'publish',
+				'numberposts' => 1,
+				'meta_key'    => TranslationGroup::META_LANG,
+				'meta_value'  => $first,
+			] );
+			if ( $found ) {
+				$sibling = (int) TranslationGroup::translation( $found[0]->ID, $target );
+				if ( $sibling && get_post_status( $sibling ) === 'publish' ) {
+					$dest = get_permalink( $sibling );
+				}
+			}
+		}
+
+		if ( ! $dest ) {
+			$dest = $target === LocaleManager::default()
+				? home_url( '/' )
+				: home_url( '/' . $target . '/' );
+		}
+
+		wp_safe_redirect( $dest, 301 );
+		exit;
+	}
+
+	/**
 	 * Resolve a request to the post written in the current language. WP resolves
 	 * a slug to *a* post, but with one post per language (and repeatable slugs)
 	 * it can land on the wrong one — so we find the candidate and swap in the
@@ -310,6 +376,21 @@ class Router {
 				// Language home with an untranslated front page: render it in
 				// place — redirecting /en/ to / would dead-end the switcher.
 				if ( $post->ID === (int) get_option( 'page_on_front' ) ) {
+					return $query_vars;
+				}
+				// The found post belongs to a DISABLED language (its slug still
+				// resolves — singular queries aren't lang-filtered). Never render
+				// it: 301 to its sibling in the redirect target, or plain 404.
+				$post_lang = TranslationGroup::langOf( $post->ID );
+				if ( $post_lang && ! in_array( $post_lang, LocaleManager::supported(), true ) ) {
+					$target     = LocaleManager::redirectTarget( $post_lang );
+					$sibling_id = (int) TranslationGroup::translation( $post->ID, $target );
+					if ( $sibling_id && get_post_status( $sibling_id ) === 'publish' ) {
+						self::$swappedTarget = $sibling_id; // 301 via canonicalizeSwappedSlug
+						return self::pinPost( $query_vars, get_post( $sibling_id ) );
+					}
+					unset( $query_vars['pagename'], $query_vars['name'], $query_vars['p'], $query_vars['page_id'], $query_vars['attachment'] );
+					$query_vars['error'] = '404';
 					return $query_vars;
 				}
 				// No published translation. Pin the found post anyway — core only

@@ -105,6 +105,7 @@ class Admin {
 				];
 			}, array_keys( $config ) ),
 			'defaultLang'       => $default,
+			'disabledRedirects' => LocaleManager::redirectTargets(),
 			'translationsExist' => TranslationGroup::translationsExist(),
 			'themeStrings'      => Translator::grouped(),
 			'menuItems'         => Nav::menuItems(),

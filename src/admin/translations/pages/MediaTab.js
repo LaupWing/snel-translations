@@ -32,7 +32,7 @@ export default function MediaTab() {
         { code: 'it', label: 'IT' },
     ];
     const defaultLang = window.snelTranslations?.defaultLang || 'nl';
-    const nonDefaultLangs = languages.filter( ( l ) => ! l.default );
+    const nonDefaultLangs = languages.filter( ( l ) => ! l.default && l.enabled !== false );
     const cfg = window.snelTranslations || {};
 
     const [ scope, setScope ] = useState( 'all' );

@@ -8,7 +8,7 @@ import EditableCell from '../components/EditableCell';
 export default function MenuTab( { initialSearch = '' } ) {
     const languages = window.snelTranslations?.languages || [];
     const defaultLang = window.snelTranslations?.defaultLang || 'nl';
-    const nonDefaultLangs = languages.filter( ( l ) => ! l.default );
+    const nonDefaultLangs = languages.filter( ( l ) => ! l.default && l.enabled !== false );
     const menuEditUrl = window.snelTranslations?.menuEditUrl || '';
 
     const [ items, setItems ] = useState( () => window.snelTranslations?.menuItems || [] );

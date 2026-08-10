@@ -115,6 +115,26 @@ class Model {
 		return $out;
 	}
 
+	/**
+	 * IDs of posts written in $lang (any status except trash/auto-draft/inherit).
+	 * Used to warn before a language is removed from the config.
+	 *
+	 * @return int[]
+	 */
+	public static function postIdsInLang( string $lang ): array {
+		global $wpdb;
+
+		return array_map( 'intval', $wpdb->get_col( $wpdb->prepare(
+			"SELECT p.ID
+			 FROM {$wpdb->posts} p
+			 INNER JOIN {$wpdb->postmeta} ml ON ml.post_id = p.ID AND ml.meta_key = %s
+			 WHERE ml.meta_value = %s
+			   AND p.post_status NOT IN ('auto-draft', 'trash', 'inherit')",
+			TranslationGroup::META_LANG,
+			$lang
+		) ) );
+	}
+
 	// ─── Options ─────────────────────────────────────────────────────────────
 
 	public static function languagesJson(): string {
@@ -135,6 +155,15 @@ class Model {
 
 	public static function saveEnabledLangs( array $langs ): void {
 		update_option( 'snel_enabled_langs', array_values( $langs ) );
+	}
+
+	public static function disabledRedirects(): array {
+		$map = get_option( 'snel_disabled_redirects', [] );
+		return is_array( $map ) ? $map : [];
+	}
+
+	public static function saveDisabledRedirects( array $map ): void {
+		update_option( 'snel_disabled_redirects', $map );
 	}
 
 	public static function themeStrings(): array {
