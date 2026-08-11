@@ -65,6 +65,16 @@ class TermTranslation {
 		return '_snel_desc_' . $lang;
 	}
 
+	/** Meta key for a term SEO title in a language. */
+	public static function seoTitleKey( string $lang ): string {
+		return '_snel_seo_title_' . $lang;
+	}
+
+	/** Meta key for a term SEO meta description in a language. */
+	public static function seoDescKey( string $lang ): string {
+		return '_snel_seo_desc_' . $lang;
+	}
+
 	/** Register the front-end display filter (no-op in admin). */
 	public static function register(): void {
 		if ( is_admin() ) {
@@ -251,9 +261,11 @@ class TermTranslation {
 					</div>
 
 					<?php foreach ( $langs as $i => $lang ) :
-						$name = get_term_meta( $term->term_id, self::nameKey( $lang ), true );
-						$desc = get_term_meta( $term->term_id, self::descKey( $lang ), true );
-						$slug = get_term_meta( $term->term_id, self::slugKey( $lang ), true );
+						$name      = get_term_meta( $term->term_id, self::nameKey( $lang ), true );
+						$desc      = get_term_meta( $term->term_id, self::descKey( $lang ), true );
+						$slug      = get_term_meta( $term->term_id, self::slugKey( $lang ), true );
+						$seo_title = get_term_meta( $term->term_id, self::seoTitleKey( $lang ), true );
+						$seo_desc  = get_term_meta( $term->term_id, self::seoDescKey( $lang ), true );
 						?>
 						<div class="snel-tr-panel<?php echo 0 === $i ? ' is-active' : ''; ?>" data-lang="<?php echo esc_attr( $lang ); ?>">
 							<p>
@@ -275,6 +287,19 @@ class TermTranslation {
 								<label><strong><?php esc_html_e( 'Description', 'snel' ); ?></strong></label><br>
 								<textarea rows="3" class="large-text snel-tr-desc"
 									name="snel_term_desc[<?php echo esc_attr( $lang ); ?>]"><?php echo esc_textarea( $desc ); ?></textarea>
+							</p>
+							<p>
+								<label><strong><?php esc_html_e( 'SEO title', 'snel' ); ?></strong></label><br>
+								<input type="text" class="regular-text snel-tr-seo-title"
+									name="snel_term_seo_title[<?php echo esc_attr( $lang ); ?>]"
+									value="<?php echo esc_attr( $seo_title ); ?>"
+									placeholder="<?php esc_attr_e( 'Blank = automatic (translated name)', 'snel' ); ?>" />
+							</p>
+							<p>
+								<label><strong><?php esc_html_e( 'Meta description', 'snel' ); ?></strong></label><br>
+								<textarea rows="2" class="large-text snel-tr-seo-desc"
+									name="snel_term_seo_desc[<?php echo esc_attr( $lang ); ?>]"
+									placeholder="<?php esc_attr_e( 'Blank = the translated description', 'snel' ); ?>"><?php echo esc_textarea( $seo_desc ); ?></textarea>
 							</p>
 						</div>
 					<?php endforeach; ?>
@@ -420,9 +445,11 @@ class TermTranslation {
 			return;
 		}
 
-		$names = isset( $_POST['snel_term_name'] ) ? (array) $_POST['snel_term_name'] : [];
-		$descs = isset( $_POST['snel_term_desc'] ) ? (array) $_POST['snel_term_desc'] : [];
-		$slugs = isset( $_POST['snel_term_slug'] ) ? (array) $_POST['snel_term_slug'] : [];
+		$names      = isset( $_POST['snel_term_name'] ) ? (array) $_POST['snel_term_name'] : [];
+		$descs      = isset( $_POST['snel_term_desc'] ) ? (array) $_POST['snel_term_desc'] : [];
+		$slugs      = isset( $_POST['snel_term_slug'] ) ? (array) $_POST['snel_term_slug'] : [];
+		$seo_titles = isset( $_POST['snel_term_seo_title'] ) ? (array) $_POST['snel_term_seo_title'] : [];
+		$seo_descs  = isset( $_POST['snel_term_seo_desc'] ) ? (array) $_POST['snel_term_seo_desc'] : [];
 
 		foreach ( self::targetLangs() as $lang ) {
 			if ( isset( $names[ $lang ] ) ) {
@@ -433,6 +460,12 @@ class TermTranslation {
 			}
 			if ( isset( $slugs[ $lang ] ) ) {
 				update_term_meta( $term_id, self::slugKey( $lang ), sanitize_title( wp_unslash( $slugs[ $lang ] ) ) );
+			}
+			if ( isset( $seo_titles[ $lang ] ) ) {
+				update_term_meta( $term_id, self::seoTitleKey( $lang ), sanitize_text_field( wp_unslash( $seo_titles[ $lang ] ) ) );
+			}
+			if ( isset( $seo_descs[ $lang ] ) ) {
+				update_term_meta( $term_id, self::seoDescKey( $lang ), sanitize_textarea_field( wp_unslash( $seo_descs[ $lang ] ) ) );
 			}
 		}
 	}
