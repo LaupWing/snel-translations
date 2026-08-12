@@ -42,6 +42,16 @@ class TranslationGroup {
 		return LocaleManager::default();
 	}
 
+	/**
+	 * The language stored on a post, unvalidated — a disabled language comes
+	 * back as itself, not as the default. Use for identity checks (slug
+	 * uniqueness); use langOf() for anything that renders.
+	 */
+	private static function rawLangOf( int $post_id ): string {
+		$lang = (string) get_post_meta( $post_id, self::META_LANG, true );
+		return $lang !== '' ? $lang : LocaleManager::default();
+	}
+
 	/** The group id for a post (falls back to the post's own id). */
 	public static function groupOf( int $post_id ): int {
 		$group = (int) get_post_meta( $post_id, self::META_GROUP, true );
@@ -176,12 +186,14 @@ class TranslationGroup {
 			return $slug;
 		}
 
+		// Compare RAW meta, not langOf(): langOf() maps a disabled language back
+		// to the default, which made a disabled-language sibling holding the slug
+		// look like a same-language collision (the /blog vs blog-2 bug).
 		// Mid-insert the post has no _snel_lang yet — trust the pending hint.
-		$my_lang = get_post_meta( (int) $post_ID, self::META_LANG, true )
-			? self::langOf( (int) $post_ID )
-			: ( self::$pendingLang ?? self::langOf( (int) $post_ID ) );
+		$raw     = (string) get_post_meta( (int) $post_ID, self::META_LANG, true );
+		$my_lang = $raw !== '' ? $raw : ( self::$pendingLang ?? LocaleManager::default() );
 		foreach ( $rows as $other_id ) {
-			if ( self::langOf( (int) $other_id ) === $my_lang ) {
+			if ( self::rawLangOf( (int) $other_id ) === $my_lang ) {
 				return $slug; // genuine same-language collision — keep WP's slug
 			}
 		}

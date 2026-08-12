@@ -5,6 +5,16 @@ the context, what we rejected, what we accepted as the cost.
 
 ---
 
+## 2026-08 — Slug uniqueness compares RAW language meta, not langOf() (v0.10.1)
+
+Context: on snelstack.com, giving the NL blog page the slug `blog` produced
+`blog-2` even though only disabled-language siblings (de/fr/es/it) held `blog`.
+Cause: `langOf()` maps a disabled language back to the default, so those
+siblings *read as Dutch* → fake same-language collision.
+Decision: identity checks (slug uniqueness) use raw `_snel_lang` meta via
+`rawLangOf()`; `langOf()` stays for anything that renders. No precedence rules
+needed — the language prefix (`/blog` vs `/en/blog`) already disambiguates.
+
 ## 2026-08 — Docs system: CLAUDE.md + DATA.md + DECISIONS.md, same names in every project
 
 Context: code was outgrowing Loc's head; AI writes a growing share of it.
