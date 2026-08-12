@@ -439,7 +439,7 @@ function TranslationsPanel() {
 			{showSyncAll && (() => {
 				const syncList = showSyncAll === 'all' ? existingTranslations : outdated;
 				return (
-					<Modal title={__('Re-sync translations', 'snel')} onRequestClose={() => setShowSyncAll(false)}>
+					<Modal title={__('Re-sync translations', 'snel')} onRequestClose={() => setShowSyncAll(false)} style={{ maxWidth: 480, width: '100%' }}>
 						<p style={{ fontSize: 13, marginTop: 0 }}>
 							{__('This re-translates the source content into each language and overwrites the current translated content. Unchanged text is reused from memory (no AI cost); manual edits in those translations will be lost.', 'snel')}
 						</p>
