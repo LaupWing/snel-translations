@@ -50,6 +50,25 @@ class UrlGenerator {
 	 * and for everything else — swap the prefix on the current URL.
 	 */
 	public static function langUrl( string $target_lang ): string {
+		// Blog index: the posts page is is_home(), not is_page(), so the
+		// singular branch below never runs and swapPrefix() would keep the
+		// current language's page slug (e.g. /en/blog-en/ → /blog-en/ → 404).
+		// Resolve the sibling of the (language-filtered) posts page instead.
+		if ( is_home() ) {
+			$posts_page = (int) get_option( 'page_for_posts' );
+			if ( $posts_page ) {
+				$sibling_id = TranslationGroup::translation( $posts_page, $target_lang );
+				if ( $sibling_id && get_post_status( $sibling_id ) === 'publish' ) {
+					$url   = self::prefixedPermalink( $sibling_id, $target_lang );
+					$paged = (int) get_query_var( 'paged' );
+					if ( $paged > 1 ) {
+						$url = trailingslashit( $url ) . 'page/' . $paged . '/';
+					}
+					return $url;
+				}
+			}
+		}
+
 		if ( is_singular() || is_page() ) {
 			$current_id = get_queried_object_id();
 			if ( $current_id ) {
