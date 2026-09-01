@@ -43,11 +43,12 @@ class TranslationGroup {
 	}
 
 	/**
-	 * The language stored on a post, unvalidated — a disabled language comes
-	 * back as itself, not as the default. Use for identity checks (slug
-	 * uniqueness); use langOf() for anything that renders.
+	 * SOT: raw post language. The language stored on a post, unvalidated — a
+	 * disabled language comes back as itself, not as the default. Use for
+	 * identity checks (slug uniqueness, sibling maps, routing guards); use
+	 * langOf() for anything that renders.
 	 */
-	private static function rawLangOf( int $post_id ): string {
+	public static function rawLangOf( int $post_id ): string {
 		$lang = (string) get_post_meta( $post_id, self::META_LANG, true );
 		return $lang !== '' ? $lang : LocaleManager::default();
 	}
@@ -82,14 +83,18 @@ class TranslationGroup {
 			],
 		] );
 
+		// Key by RAW meta, not langOf(): langOf() maps a disabled language back
+		// to the default, which let a de/fr sibling shadow the real default-
+		// language post in the map. A disabled sibling sits under its own key
+		// ('de') — active-language lookups never see it, the routing guards do.
 		$map = [];
 		foreach ( $query->posts as $post ) {
-			$map[ self::langOf( $post->ID ) ] = $post->ID;
+			$map[ self::rawLangOf( $post->ID ) ] = $post->ID;
 		}
 
 		// The root post may predate having group meta; make sure it's included.
 		if ( ! in_array( $group_id, $map, true ) && get_post( $group_id ) ) {
-			$map[ self::langOf( $group_id ) ] = $group_id;
+			$map[ self::rawLangOf( $group_id ) ] = $group_id;
 		}
 
 		self::$cache[ $group_id ] = $map;
@@ -101,7 +106,10 @@ class TranslationGroup {
 	 * the post itself if it's already in the requested language.
 	 */
 	public static function translation( int $post_id, string $lang ): int {
-		if ( self::langOf( $post_id ) === $lang ) {
+		// RAW comparison: langOf() reads a disabled-language post as the
+		// default, so asking a de post for its nl sibling returned the de post
+		// itself. Identity checks always compare raw meta (DECISIONS 2026-08).
+		if ( self::rawLangOf( $post_id ) === $lang ) {
 			return $post_id;
 		}
 		$siblings = self::siblings( self::groupOf( $post_id ) );

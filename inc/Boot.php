@@ -39,6 +39,7 @@ class Boot {
 		require_once SNEL_TR_DIR . 'inc/core/Translator.php';
 		require_once SNEL_TR_DIR . 'inc/core/TermTranslation.php';
 		require_once SNEL_TR_DIR . 'inc/core/SeoBridge.php';
+		require_once SNEL_TR_DIR . 'inc/core/DisabledLanguages.php';
 		require_once SNEL_TR_DIR . 'inc/core/Hreflang.php';
 		require_once SNEL_TR_DIR . 'inc/core/FallbackNotice.php';
 
@@ -60,6 +61,7 @@ class Boot {
 		Core\TranslationGroup::register();  // permalink prefix + archive filter + save
 		Core\TermTranslation::register();   // translated term labels (front end)
 		Core\SeoBridge::register();         // per-language Yoast output on term archives
+		Core\DisabledLanguages::register(); // disabled-language posts out of sitemaps + REST
 		Core\Hreflang::register();          // <link rel="alternate" hreflang> in <head>
 		Core\FallbackNotice::register();    // toast after untranslated-content redirect
 		Nav::register();                    // nav menu item resolution

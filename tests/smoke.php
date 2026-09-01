@@ -188,6 +188,77 @@ check( 'draft sibling: no hreflang advertised', strpos( $body, 'hreflang="' . $l
 
 wp_update_post( [ 'ID' => (int) $tr_id, 'post_status' => 'publish' ] );
 
+// ─── 6. Disabled-language leaks ──────────────────────────────────────────────
+// Posts whose _snel_lang is not an enabled language must never resolve
+// publicly: not as a single URL, not in sitemaps, not in REST listings.
+echo "Disabled-language leaks:\n";
+
+$dis_id = wp_insert_post( [
+	'post_title'  => 'Snel Smoke Disabled',
+	'post_name'   => 'snel-smoke-disabled',
+	'post_status' => 'publish',
+	'post_type'   => 'page',
+	'post_content'=> '<p>snel-smoke-disabled-body</p>',
+], true );
+$orphan_id = wp_insert_post( [
+	'post_title'  => 'Snel Smoke Disabled Orphan',
+	'post_name'   => 'snel-smoke-disabled-orphan',
+	'post_status' => 'publish',
+	'post_type'   => 'page',
+	'post_content'=> '<p>snel-smoke-disabled-orphan-body</p>',
+], true );
+
+if ( is_wp_error( $dis_id ) || is_wp_error( $orphan_id ) ) {
+	check( 'disabled-language fixtures created', false, 'wp_insert_post failed' );
+} else {
+	// 'zz' is not a configured language → reads as disabled everywhere.
+	TranslationGroup::link( (int) $dis_id, (int) $src_id, 'zz' );    // has a published default-lang sibling
+	TranslationGroup::link( (int) $orphan_id, (int) $orphan_id, 'zz' ); // family of one — nowhere to redirect
+
+	register_shutdown_function( function () use ( $dis_id, $orphan_id ) {
+		wp_delete_post( (int) $dis_id, true );
+		wp_delete_post( (int) $orphan_id, true );
+	} );
+
+	// Single URLs: sibling exists → 301 to it; no sibling → 404. Never 200.
+	[ $code, $loc ] = fetch( '/snel-smoke-disabled/' );
+	check( 'disabled post with live sibling → 301', $code === 301, "got {$code}" );
+	check( '…to the sibling URL', strpos( $loc, '/snel-smoke-source/' ) !== false, $loc );
+
+	[ $code ] = fetch( '/snel-smoke-disabled-orphan/' );
+	check( 'disabled post without sibling → 404', $code === 404, "got {$code}" );
+
+	// Sibling model: a disabled member never shadows an enabled language.
+	check(
+		'translation() of source in default lang is the source itself',
+		TranslationGroup::translation( (int) $src_id, $default_lang ) === (int) $src_id
+	);
+
+	// REST listings: the orphan must not appear for anonymous readers.
+	[ $code, , $body ] = fetch( '/wp-json/wp/v2/pages?slug=snel-smoke-disabled-orphan' );
+	check( 'REST listing hides disabled post', $code === 200 && trim( $body ) === '[]', "got {$code}: " . substr( $body, 0, 80 ) );
+	[ $code, , $body ] = fetch( '/wp-json/wp/v2/pages?slug=snel-smoke-source' );
+	check( 'REST listing still serves enabled post', $code === 200 && strpos( $body, 'snel-smoke-source' ) !== false, "got {$code}" );
+	[ $code, , $body ] = fetch( '/wp-json/wp/v2/search?search=snel-smoke-disabled-orphan' );
+	check( 'REST search hides disabled post', $code === 200 && strpos( $body, 'snel-smoke-disabled-orphan' ) === false, "got {$code}: " . substr( $body, 0, 80 ) );
+
+	// Sitemaps: whichever engine answers (Yoast or core) must skip the orphan.
+	$maps = [ '/page-sitemap.xml' => 'Yoast', '/wp-sitemap-posts-page-1.xml' => 'core' ];
+	$seen = false;
+	foreach ( $maps as $path => $engine ) {
+		[ $code, , $body ] = fetch( $path );
+		if ( $code !== 200 ) {
+			continue;
+		}
+		$seen = true;
+		check( "{$engine} sitemap lists enabled post", strpos( $body, 'snel-smoke-source' ) !== false );
+		check( "{$engine} sitemap hides disabled post", strpos( $body, 'snel-smoke-disabled-orphan' ) === false );
+	}
+	if ( ! $seen ) {
+		echo "  skip sitemap checks (no sitemap endpoint answered 200)\n";
+	}
+}
+
 // ─── Summary ─────────────────────────────────────────────────────────────────
 echo "\n{$pass} passed, {$fail} failed.\n";
 exit( $fail === 0 ? 0 : 1 );

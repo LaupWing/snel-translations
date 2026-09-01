@@ -369,28 +369,32 @@ class Router {
 		}
 
 		$target = $post;
-		if ( TranslationGroup::langOf( $post->ID ) !== $lang ) {
+		// RAW meta, not langOf(): langOf() maps a disabled language back to the
+		// default, so a de post requested at the root read as "already the right
+		// language" and rendered as a 200 — the disabled-language guard below
+		// was unreachable. Raw meta keeps the guard honest (DECISIONS 2026-08).
+		$post_lang = TranslationGroup::rawLangOf( $post->ID );
+		if ( $post_lang !== $lang ) {
 			$sibling_id = TranslationGroup::translation( $post->ID, $lang );
 			$sibling    = $sibling_id ? get_post( $sibling_id ) : null;
 			if ( ! $sibling instanceof \WP_Post || $sibling->post_status !== 'publish' ) {
-				// Language home with an untranslated front page: render it in
-				// place — redirecting /en/ to / would dead-end the switcher.
-				if ( $post->ID === (int) get_option( 'page_on_front' ) ) {
-					return $query_vars;
-				}
 				// The found post belongs to a DISABLED language (its slug still
 				// resolves — singular queries aren't lang-filtered). Never render
 				// it: 301 to its sibling in the redirect target, or plain 404.
-				$post_lang = TranslationGroup::langOf( $post->ID );
-				if ( $post_lang && ! in_array( $post_lang, LocaleManager::supported(), true ) ) {
-					$target     = LocaleManager::redirectTarget( $post_lang );
-					$sibling_id = (int) TranslationGroup::translation( $post->ID, $target );
-					if ( $sibling_id && get_post_status( $sibling_id ) === 'publish' ) {
+				if ( ! in_array( $post_lang, LocaleManager::supported(), true ) ) {
+					$target_lang = LocaleManager::redirectTarget( $post_lang );
+					$sibling_id  = (int) TranslationGroup::translation( $post->ID, $target_lang );
+					if ( $sibling_id && $sibling_id !== $post->ID && get_post_status( $sibling_id ) === 'publish' ) {
 						self::$swappedTarget = $sibling_id; // 301 via canonicalizeSwappedSlug
 						return self::pinPost( $query_vars, get_post( $sibling_id ) );
 					}
 					unset( $query_vars['pagename'], $query_vars['name'], $query_vars['p'], $query_vars['page_id'], $query_vars['attachment'] );
 					$query_vars['error'] = '404';
+					return $query_vars;
+				}
+				// Language home with an untranslated front page: render it in
+				// place — redirecting /en/ to / would dead-end the switcher.
+				if ( $post->ID === (int) get_option( 'page_on_front' ) ) {
 					return $query_vars;
 				}
 				// No published translation. Pin the found post anyway — core only

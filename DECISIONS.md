@@ -5,6 +5,20 @@ the context, what we rejected, what we accepted as the cost.
 
 ---
 
+## 2026-08 — Disabled-language posts never resolve publicly (resolution-points audit)
+
+Context: snelstack.com dropped de/fr/es/it but their posts stayed published —
+Yoast sitemaps listed hundreds of dead-language URLs and the singles rendered
+200 at the root. Cause: `langOf()` maps a disabled language to the default, so
+the Router's disabled-language guard was unreachable and `siblings()` let a de
+post shadow the real nl one.
+Decision: every *identity* comparison at a resolution point uses raw meta
+(`rawLangOf()`, now public): `siblings()` keys, `translation()`'s shortcut, the
+Router guard. New `DisabledLanguages` class excludes disabled-language posts
+from Yoast sitemaps, core sitemaps, and public REST listings/search — but NOT
+from REST context=edit (admin is never language-filtered, invariant 3).
+Singles: 301 to the redirect-target sibling when published, else 404.
+
 ## 2026-08 — Slug uniqueness compares RAW language meta, not langOf() (v0.10.1)
 
 Context: on snelstack.com, giving the NL blog page the slug `blog` produced
