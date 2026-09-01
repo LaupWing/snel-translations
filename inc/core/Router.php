@@ -33,7 +33,7 @@ class Router {
 		add_action( 'template_redirect', [ self::class, 'canonicalizeSwappedSlug' ], 9 ); // before redirect_canonical (10)
 
 		// Force one flush after deploy if the rules are stale.
-		$rules_version = 'snel_rewrite_v10';
+		$rules_version = 'snel_rewrite_v11';
 		if ( get_option( $rules_version ) !== '1' ) {
 			add_action( 'init', function () use ( $rules_version ) {
 				flush_rewrite_rules();
@@ -130,6 +130,13 @@ class Router {
 				}
 				add_rewrite_rule( "^{$lang}/{$slug}/page/([0-9]+)/?$", "index.php?lang={$lang}&post_type={$cpt->name}&paged=\$matches[1]", 'top' );
 				add_rewrite_rule( "^{$lang}/{$slug}/([^/]+)/?$", "index.php?lang={$lang}&post_type={$cpt->name}&name=\$matches[1]", 'top' );
+				// Legacy base: when the CPT slug is translated (/de/produkt/),
+				// still accept the untranslated one (/de/product/{slug}/) so
+				// old indexed URLs resolve. resolveLanguagePost swaps in the
+				// sibling and canonicalizeSwappedSlug 301s to the real URL.
+				if ( $slug !== $default_slug ) {
+					add_rewrite_rule( "^{$lang}/{$default_slug}/([^/]+)/?$", "index.php?lang={$lang}&post_type={$cpt->name}&name=\$matches[1]", 'top' );
+				}
 			}
 
 			// Taxonomy term archives (categories, tags, custom public taxonomies).
